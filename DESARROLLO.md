@@ -1,6 +1,6 @@
 # FotosCompare · Notas de desarrollo
 
-Para retomar el trabajo en un chat nuevo sin volver a investigar todo. Decí "seguimos con FotosCompare, etapa vX.Y.Z" y que se lea este archivo.
+Para retomar el trabajo en un chat nuevo sin volver a investigar todo. Decí "seguimos con FotosCompare, <etapa>, leé DESARROLLO.md". Al cerrar cada etapa, actualizar este archivo con lo necesario para la siguiente.
 
 ## Estado
 
@@ -9,10 +9,17 @@ Para retomar el trabajo en un chat nuevo sin volver a investigar todo. Decí "se
 | v0.0.1 | Takeout (.zip con ZIP64 o carpeta), Picker de Google Fotos, carpeta/archivos locales, comparación por niveles, verificación de huella, CSV |
 | v0.0.2 | Comparación visual (dHash), pestaña Duplicados, HEIC/HEIF/AVIF |
 | v0.1.0 | Revisar respaldos (con candados y "Apartar" reversible), Por carpeta, guardado de índices e historial (IndexedDB), alta en la caja de apps |
+| v0.1.1 | Takeout desde Drive, **Parte 1**: botón "☁️ Elegir los .zip en Drive" (selector de Google, permiso `drive.file`), lectura por tramos (Range) del índice y los `.json`, clave de API en "Configurar acceso a Google", ayuda |
 
-**Próximas etapas acordadas:**
-- **v0.2.0:** leer el Takeout desde Google Drive con el núcleo de `multigdrive`. Takeout puede entregar el export directo en Drive.
-- **v0.3.0:** comparación visual de videos.
+**Próximas etapas acordadas** (todas con **Release Patch**, ver "Versiones"):
+- **Takeout desde Drive, Parte 2** (próximo chat: "seguimos con FotosCompare, Takeout desde Drive Parte 2, leé DESARROLLO.md"):
+  - Prueba completa en Chrome headless con `google.picker` y Drive simulados (`page.route`), como la del Picker de Fotos. En la Parte 1 se probó el núcleo en Node (`driveFile` + `zipEntries` + `readTakeout` contra un Drive falso: mismo resultado que el .zip local, servidor que ignora Range, 401, reintento en 429) y que la página carga y avisa si falta la clave.
+  - Miniaturas y huella desde Drive: ya funcionan por `entBlob` (bajan solo esa foto), pero el token dura 1 hora. Falta renovarlo sin volver a elegir los .zip (`getDriveToken` con `prompt: ""` desde un clic) y probarlo.
+  - Índice guardado de un Takeout de Drive: guardar `id`, `name` y `size` de cada .zip, para reconectar sin volver a elegirlos (con `drive.file` el permiso sobre esos archivos queda).
+  - README: sección "Takeout desde Drive".
+  - Velocidad con Takeouts grandes: hoy es un pedido por cada `.json` (16 en paralelo). Si es lento, agrupar `.json` cercanos en un solo tramo.
+  - Probar contra Google real cuando el usuario tenga la clave de API (ver "Takeout desde Drive").
+- **Comparación visual de videos** (antes v0.3.0).
 
 ## Decisiones del usuario (no cambiar sin consultar)
 
@@ -23,6 +30,8 @@ Para retomar el trabajo en un chat nuevo sin volver a investigar todo. Decí "se
   - Opciones del usuario: cuentas que valen como respaldo, carpetas protegidas y "Exigir huella".
 - **No le interesa "Recuperar lo que falta"** (descargar de la nube al dispositivo): su objetivo es liberar espacio físico con control.
 - **Versiones:** estándar de la caja de apps (`home/ESTANDAR-VERSIONES.md`), `<meta name="app-version">` y `[patch]`/`[minor]`/`[major]` en el commit.
+  - **Desde v0.1.1, todas las versiones salen con Release Patch** (v0.1.2, v0.1.3…) hasta que el usuario indique otra cosa. Se le puede sugerir un Minor o Major cuando convenga, pero sin aplicarlo sin su respuesta.
+- **Takeout desde Drive con permiso acotado** (`drive.file` + selector de Google): la app solo ve los .zip que el usuario elige. No usar el permiso de todo Drive.
 
 ## Arquitectura
 
@@ -44,6 +53,13 @@ Un solo `index.html`, sin dependencias. Se arma desde tres fuentes con un script
 4. **Bloque de versión:** copiado de `jobpost/index.html` (estándar de la caja de apps).
 
 **Detalle importante:** los accesos a carpetas (`FileSystemDirectoryHandle`) se guardan aparte, en `raices`, y **solo se leen al reconectar o deshacer**. Así, si un navegador falla al leerlos, la app igual abre. Leer de IndexedDB un handle de OPFS cuelga el Chrome headless de pruebas; con carpetas reales no debería pasar, pero quedó aislado igual.
+
+**Takeout desde Drive:**
+- `FC.driveFile(meta, token, fetch?)` imita un Blob: `size`, `slice(a, b).arrayBuffer()` y `read(a, b)` con encabezado `Range` sobre `files/{id}?alt=media`. Cuenta `bytes` y `pedidos`. Reintenta en errores de red, 429 y 5xx; con 401 avisa que el acceso venció.
+- `zipEntries` funciona igual sobre ese objeto. `zipBlob` detecta `zip.remote` y usa `zipBlobRemote`: un solo pedido con encabezado local más datos (estima el largo con `nlen`/`xlen` del directorio central).
+- En la app: `loadPicker` (`apis.google.com/js/api.js` → `gapi.load("picker")`), `getDriveToken` (token aparte con `drive.file`), `elegirEnDrive` (DocsView de .zip con carpetas, multiselección, `setAppId` = número de proyecto, el prefijo del ID de cliente) y `driveMeta` (`files.get` con `size`). `leerZips(files, acc, how)` es común a los .zip locales y de Drive.
+- Requiere en Google Cloud: **Google Picker API** habilitada, una **clave de API** (restringida al sitio y a Picker API) cargada en el menú → "Configurar acceso a Google" (`cfg.apiKey`), y el permiso `drive.file` en la pantalla de consentimiento. Drive API ya está habilitada por multigdrive. **No se probó contra Google real.**
+- El núcleo de `multigdrive` es Dart (Flutter), así que no se reutiliza código: solo el cliente OAuth y el proyecto.
 
 **Picker:**
 - Cliente OAuth web del proyecto de `multigdrive` (`414410842048-ac53…`), con Google Identity Services (token en ventana emergente).
