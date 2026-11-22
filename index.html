@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="app-version" content="v0.0.2">
+<meta name="app-version" content="v0.1.0">
 <meta name="theme-color" content="#1d4ed8">
 <meta name="color-scheme" content="light dark">
 <script>try{var t=(JSON.parse(localStorage.getItem("fotoscompare_v1")||"{}").tema)||"sistema";document.documentElement.dataset.tema=(t==="oscuro"||(t==="sistema"&&matchMedia("(prefers-color-scheme: dark)").matches))?"dark":"light";}catch(e){}</script>
@@ -51,6 +51,21 @@
   .grp{border:1px solid var(--bd);border-radius:12px;padding:8px;background:var(--bg)}
   .grp .gh{font-size:13px;margin:2px 4px 8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
   .grp .list{gap:4px}
+  .it.pair.rv{grid-template-columns:26px 64px 1fr 64px 1fr auto}
+  .it.rv input[type=checkbox]{width:18px;height:18px}
+  @media(max-width:760px){.it.pair.rv{grid-template-columns:26px 56px 1fr}.it.pair.rv .th:nth-of-type(2){display:none}}
+  .selbar{position:sticky;bottom:0;z-index:30;display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--card);border:1px solid var(--ac);border-radius:12px;padding:10px 12px;margin-top:10px;box-shadow:0 -4px 16px rgba(0,0,0,.08)}
+  .warn{background:var(--midb);color:var(--mid);border-radius:10px;padding:9px 12px;font-size:13px;margin:6px 0}
+  .reglas{border:1px solid var(--bd);border-radius:12px;padding:10px 12px;margin:6px 0 10px;font-size:14px}
+  .reglas summary{cursor:pointer;font-weight:600}
+  .chip{display:inline-flex;gap:6px;align-items:center;background:var(--chip);color:var(--chipt);border-radius:999px;padding:3px 10px;font-size:12px;margin:2px}
+  .chip button{border:0;background:none;color:inherit;cursor:pointer;padding:0}
+  table.carp{width:100%;border-collapse:collapse;font-size:13px}
+  table.carp th,table.carp td{padding:7px 6px;border-bottom:1px solid var(--bd);text-align:left;vertical-align:middle}
+  table.carp td.n{text-align:right;white-space:nowrap}
+  .bar{display:flex;height:8px;border-radius:9px;overflow:hidden;background:var(--chip);min-width:90px}
+  .bar i{display:block;height:100%}
+  .est-ok{color:var(--ok)} .est-blk{color:var(--bad)} .est-ver{color:var(--mid)}
   .prog{height:6px;background:var(--chip);border-radius:9px;overflow:hidden;margin-top:8px}
   .prog i{display:block;height:100%;width:0;background:var(--ac);transition:width .2s}
   .status{font-size:13px;color:var(--mut);margin-top:6px;min-height:18px}
@@ -106,6 +121,8 @@
 </header>
 <div class="menu hide" id="menu">
   <button data-m="tema" type="button">🌓 Tema: <span id="temaTxt"></span></button>
+  <button data-m="hist" type="button">🕘 Historial de comparaciones</button>
+  <button data-m="apart" type="button">↩ Apartados (deshacer)</button>
   <button data-m="google" type="button">🔑 Configurar acceso a Google</button>
   <button data-m="ayuda" type="button">❓ Ayuda y configuración inicial</button>
   <button data-m="limpiar" type="button">🧹 Empezar de nuevo</button>
@@ -164,6 +181,11 @@
       <div id="localList"></div>
     </section>
   </div>
+  <section class="card hide" id="savedCard">
+    <div class="row"><h2 style="margin:0;flex:1">💾 Guardadas en este navegador</h2></div>
+    <div class="sm mut">Índices de comparaciones anteriores: se usan sin volver a leer los .zip. Las carpetas de la PC se pueden reconectar.</div>
+    <div id="savedList"></div>
+  </section>
   <section class="card">
     <div class="row">
       <button class="btn pri" id="cmpBtn" type="button" disabled>▶ Comparar</button>
@@ -174,6 +196,7 @@
         <select id="optTol"><option value="1">1 s</option><option value="2">2 s</option><option value="5">5 s</option><option value="60">1 min</option></select></label>
       <label class="chk"><input type="checkbox" id="optHuso"> Aceptar otro huso horario</label>
       <label class="chk"><input type="checkbox" id="optProb"> Contar "Probable" como coincidencia</label>
+      <label class="chk"><input type="checkbox" id="optSave"> 💾 Guardar las fuentes nuevas en este navegador</label>
     </div>
   </section>
   <section class="card hide" id="resCard">
@@ -197,10 +220,13 @@
       <select id="fKind"><option value="">Fotos y videos</option><option value="foto">Solo fotos</option><option value="video">Solo videos</option></select>
       <select id="fSrc"><option value="">Todas las fuentes</option></select>
       <select id="fDup" class="hide"><option value="">Dispositivo y nube</option><option value="local">Solo en el dispositivo</option><option value="nube">Solo en la nube</option></select>
+      <select id="fEst" class="hide"><option value="">Todos los estados</option><option value="ok">Se pueden marcar</option><option value="ver">Para verificar</option><option value="blk">Bloqueados</option><option value="apa">Apartados</option></select>
       <select id="fLv"><option value="">Todos los niveles</option><option value="exacto">Exacto</option><option value="identico">Idéntico (otro nombre)</option><option value="fuerte">Fuerte</option><option value="visual">Visual (misma imagen)</option><option value="probable">Probable</option><option value="dudoso">Dudoso</option></select>
     </div>
+    <div id="pre"></div>
     <div class="list" id="list"></div>
     <div class="more" id="more"></div>
+    <div class="selbar hide" id="selbar"></div>
   </section>
 </main>
 <dialog class="dlg" id="dlg"></dialog>
@@ -821,12 +847,13 @@ if(typeof module !== "undefined") module.exports = FC;
   const CLIENT_ID_DEF = "414410842048-ac53pi41embhn1k8e004dnr99m20fqao.apps.googleusercontent.com"; // mismo proyecto que multigdrive
   const SCOPES = "https://www.googleapis.com/auth/photospicker.mediaitems.readonly https://www.googleapis.com/auth/userinfo.email";
   const PK = "https://photospicker.googleapis.com/v1/";
-  let cfg = {tema: "sistema", tol: 2, huso: true, prob: true, clientId: "", visThr: 8};
+  let cfg = {tema: "sistema", tol: 2, huso: true, prob: true, clientId: "", visThr: 8, guardar: true, cuentasNo: [], protegidas: [], exigirHuella: false};
   try{ Object.assign(cfg, JSON.parse(localStorage.getItem(KEY) || "{}")); }catch(e){}
   const saveCfg = () => { try{ localStorage.setItem(KEY, JSON.stringify(cfg)); }catch(e){} };
   const clientId = () => (cfg.clientId || "").trim() || CLIENT_ID_DEF;
 
-  const S = {cloud: [], local: [], res: null, tab: "nube", shown: 100, nid: 1, vis: {pairs: [], dupL: [], dupC: []}};
+  const S = {cloud: [], local: [], res: null, tab: "nube", shown: 100, nid: 1, vis: {pairs: [], dupL: [], dupC: []}, sel: new Set(), carpeta: null, raices: new Map()};
+  async function raiz(id){ if(S.raices.has(id)) return S.raices.get(id); try{ const r = await DB.get("raices", id); if(r && r.root){ S.raices.set(id, r.root); return r.root; } }catch(e){} return null; }
 
   // ---------- utilidades ----------
   const fmtSize = b => !b ? "—" : b < 1024 ? b + " B" : b < 1048576 ? (b / 1024).toFixed(0) + " KB" : b < 1073741824 ? (b / 1048576).toFixed(1).replace(".", ",") + " MB" : (b / 1073741824).toFixed(2).replace(".", ",") + " GB";
@@ -888,16 +915,18 @@ if(typeof module !== "undefined") module.exports = FC;
         catch(err){ throw new Error(`${files[i].name}: ${err.message}`); }
         prog("#tkProg", i + 1, files.length * 4);
       }
-      await addTakeout(ents, acc, files.length + " .zip");
+      const fz = files.map(f => (f.name.match(/takeout-(\d{4})(\d{2})(\d{2})T/i) || [])).find(m => m[1]);
+      const fecha = fz ? new Date(+fz[1], +fz[2] - 1, +fz[3]).getTime() : Math.min(...files.map(f => f.lastModified || Date.now()));
+      await addTakeout(ents, acc, files.length + " .zip", fecha);
     }catch(err){ prog("#tkProg"); st("#tkSt", "⚠️ " + esc(err.message), true); }
   };
   $("#tkDir").onchange = async e => {
     const files = [...e.target.files]; e.target.value = ""; if(!files.length) return;
     const acc = $("#tkAcc").value.trim() || nextAcc("c");
     const ents = files.map(f => ({path: f.webkitRelativePath || f.name, size: f.size, file: f}));
-    try{ await addTakeout(ents, acc, "carpeta"); }catch(err){ prog("#tkProg"); st("#tkSt", "⚠️ " + esc(err.message), true); }
+    try{ await addTakeout(ents, acc, "carpeta", 0); }catch(err){ prog("#tkProg"); st("#tkSt", "⚠️ " + esc(err.message), true); }
   };
-  async function addTakeout(ents, acc, how){
+  async function addTakeout(ents, acc, how, fecha){
     const media = ents.filter(x => FC.kindOf(x.path)).length;
     if(!media) throw new Error("No encontré fotos ni videos. ¿Es un export de Google Fotos? Si el Takeout vino en varias partes, elegilas todas juntas.");
     st("#tkSt", `Leyendo los datos de cada foto (${num(media)} archivos)…`);
@@ -905,7 +934,8 @@ if(typeof module !== "undefined") module.exports = FC;
     prog("#tkProg");
     const sinFecha = items.filter(x => !x.date || x.date.kind !== "takeout").length;
     const unif = items.reduce((a, x) => a + ((x.copias || 1) - 1), 0);
-    S.cloud.push({id: S.nid++, kind: "takeout", acc, items, note: how + (unif ? ` · ${num(unif)} ${unif === 1 ? "copia de álbum unificada" : "copias de álbumes unificadas"}` : "")});
+    const src = {id: S.nid++, kind: "takeout", acc, items, fecha, note: how + (unif ? ` · ${num(unif)} ${unif === 1 ? "copia de álbum unificada" : "copias de álbumes unificadas"}` : "")};
+    S.cloud.push(src); guardarFuente(src);
     st("#tkSt", `✅ ${num(items.length)} fotos y videos de <b>${esc(acc)}</b>.` + (sinFecha ? ` ${num(sinFecha)} sin datos de Takeout (se usa el nombre del archivo).` : "") +
       (!ents.some(x => /\.json$/i.test(x.path)) ? " ⚠️ No vinieron los archivos .json: la comparación por fecha va a ser más débil." : ""));
     $("#tkAcc").value = "";
@@ -1011,7 +1041,8 @@ if(typeof module !== "undefined") module.exports = FC;
       prog("#pkProg");
       if(!items.length){ st("#pkSt", "No se eligió ninguna foto."); }
       else {
-        S.cloud.push({id: S.nid++, kind: "picker", acc: cur.email || "Google Fotos", items, note: "elegidas el " + new Date().toLocaleString("es-AR", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"})});
+        const src = {id: S.nid++, kind: "picker", acc: cur.email || "Google Fotos", items, fecha: Date.now(), note: "elegidas el " + new Date().toLocaleString("es-AR", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"})};
+        S.cloud.push(src); guardarFuente(src);
         st("#pkSt", `✅ ${num(items.length)} fotos y videos elegidos${cur.email ? " de <b>" + esc(cur.email) + "</b>" : ""}.`);
         renderSources();
       }
@@ -1020,27 +1051,146 @@ if(typeof module !== "undefined") module.exports = FC;
   }
 
   // ---------- Dispositivo ----------
-  $("#locDirBtn").onclick = () => $("#locDir").click();
-  $("#locFilesBtn").onclick = () => $("#locFiles").click();
-  $("#locDir").onchange = e => addLocal(e);
-  $("#locFiles").onchange = e => addLocal(e);
-  async function addLocal(e){
-    const files = [...e.target.files].filter(f => FC.kindOf(f.name)); const total = e.target.files.length; e.target.value = "";
-    if(!files.length){ st("#locSt", total ? "⚠️ No hay fotos ni videos entre los archivos elegidos." : "", !!total); return; }
-    const acc = $("#locAcc").value.trim() || nextAcc("l");
-    st("#locSt", `Leyendo ${num(files.length)} archivos…`); prog("#locProg", 0, files.length);
-    const items = new Array(files.length);
-    await pool(files, 6, async (f, i) => {
+  const FSA = typeof window.showDirectoryPicker === "function";
+  $("#locDirBtn").onclick = async () => {
+    if(!FSA) return $("#locDir").click();
+    let root;
+    try{ root = await window.showDirectoryPicker({id: "fotoscompare", mode: "read"}); }
+    catch(e){ if(e.name !== "AbortError") st("#locSt", "⚠️ " + esc(e.message), true); return; }
+    try{
+      st("#locSt", "Buscando fotos y videos en la carpeta…");
+      const list = await recorrer(root);
+      await addLocal(list, {root, total: list.total});
+    }catch(err){ prog("#locProg"); st("#locSt", "⚠️ " + esc(err.message), true); }
+  };
+  // Recorre una carpeta (File System Access) y devuelve [{fh, rel}]; no entra en _para_borrar
+  async function recorrer(root){
+    const out = []; let total = 0;
+    async function walk(dir, pre){
+      for await (const [name, h] of dir.entries()){
+        if(h.kind === "directory"){ if(name === "_para_borrar" || name.startsWith(".")) continue; await walk(h, pre + name + "/"); }
+        else { total++; if(FC.kindOf(name)) out.push({fh: h, rel: pre + name}); }
+        if(total % 500 === 0) st("#locSt", `Buscando fotos y videos en la carpeta… (${num(total)} archivos vistos)`);
+      }
+    }
+    await walk(root, "");
+    out.total = total;
+    return out;
+  }
+  $("#locDir").onchange = e => { const fs = [...e.target.files]; e.target.value = ""; addLocal(fs.filter(f => FC.kindOf(f.name)).map(f => ({file: f, rel: f.webkitRelativePath || f.name})), {total: fs.length}); };
+  $("#locFiles").onchange = e => { const fs = [...e.target.files]; e.target.value = ""; addLocal(fs.filter(f => FC.kindOf(f.name)).map(f => ({file: f, rel: f.name})), {total: fs.length}); };
+  // list: [{file?|fh?, rel}]; opt: {root, total, acc, cache: Map(rel → item guardado), sid}
+  async function addLocal(list, opt){
+    if(!list.length){ st("#locSt", opt.total ? "⚠️ No hay fotos ni videos entre los archivos elegidos." : "", !!opt.total); return; }
+    const acc = opt.acc || $("#locAcc").value.trim() || nextAcc("l");
+    const rootName = opt.root ? opt.root.name : "";
+    st("#locSt", `Leyendo ${num(list.length)} archivos…`); prog("#locProg", 0, list.length);
+    const items = new Array(list.length); let reus = 0;
+    await pool(list, 6, async (x, i) => {
+      const f = x.file || await x.fh.getFile();
+      const path = rootName ? rootName + "/" + x.rel : x.rel;
+      const old = opt.cache && opt.cache.get(x.rel);
+      if(old && old.size === f.size && old.mtime === f.lastModified){ items[i] = Object.assign({}, old, {acc, path, blob: f, fh: x.fh || null}); reus++; return; }
       const m = await FC.localMeta(f, f.name);
       const date = m.date || FC.dateFromName(f.name) || (f.lastModified ? {t: f.lastModified, prec: "seg", kind: "archivo"} : null);
-      items[i] = {src: "local", acc, name: f.name, file: f.name, path: f.webkitRelativePath || f.name, size: f.size, kind: FC.kindOf(f.name), date, w: m.w || 0, h: m.h || 0, blob: f, meta: {thumb: m.thumb || null, orient: m.orient || 1, w: m.w || 0, h: m.h || 0}};
+      items[i] = {src: "local", acc, name: f.name, file: f.name, path, rel: x.rel, size: f.size, mtime: f.lastModified, kind: FC.kindOf(f.name), date, w: m.w || 0, h: m.h || 0, blob: f, fh: x.fh || null, meta: {thumb: m.thumb || null, orient: m.orient || 1, w: m.w || 0, h: m.h || 0}};
     }, (a, b) => { prog("#locProg", a, b); st("#locSt", `Leyendo ${num(a)} de ${num(b)} archivos…`); });
     prog("#locProg");
-    S.local.push({id: S.nid++, kind: "local", acc, items, note: total > files.length ? `${num(total - files.length)} archivos que no son fotos ni videos ignorados` : ""});
+    const ign = (opt.total || list.length) - list.length;
+    const src = {id: S.nid++, kind: "local", acc, items, root: opt.root || null, sid: opt.sid, fecha: Date.now(),
+      note: (opt.root ? "carpeta conectada" : "solo lectura") + (ign > 0 ? ` · ${num(ign)} archivos que no son fotos ni videos ignorados` : "")};
+    S.local.push(src); guardarFuente(src);
     const debil = items.filter(x => !x.date || x.date.kind === "archivo").length;
-    st("#locSt", `✅ ${num(items.length)} fotos y videos de <b>${esc(acc)}</b>.` + (debil ? ` ${num(debil)} sin fecha de captura (se usa la del archivo, que es menos confiable).` : ""));
+    st("#locSt", `✅ ${num(items.length)} fotos y videos de <b>${esc(acc)}</b>.` + (reus ? ` ${num(reus)} sin cambios desde la última vez.` : "") + (debil ? ` ${num(debil)} sin fecha de captura (se usa la del archivo, que es menos confiable).` : ""));
     $("#locAcc").value = "";
     renderSources();
+  }
+
+  // ---------- Guardado en este navegador (IndexedDB) ----------
+  const DB = (() => {
+    let p = null;
+    const open = () => p || (p = new Promise((res, rej) => {
+      if(!window.indexedDB) return rej(new Error("Este navegador no permite guardar datos."));
+      const r = indexedDB.open("fotoscompare", 2);
+      r.onupgradeneeded = () => { const d = r.result; for(const [n, k] of [["fuentes", {keyPath: "sid"}], ["historial", {keyPath: "id", autoIncrement: true}], ["apartados", {keyPath: "id"}], ["raices", {keyPath: "id"}]]) if(!d.objectStoreNames.contains(n)) d.createObjectStore(n, k); };
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    }));
+    const tx = async (st, mode, fn) => { const d = await open(); return new Promise((res, rej) => { const t = d.transaction(st, mode), s = t.objectStore(st); const r = fn(s); t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error); }); };
+    return {put: (st, v) => tx(st, "readwrite", s => s.put(v)), get: (st, k) => tx(st, "readonly", s => s.get(k)), all: st => tx(st, "readonly", s => s.getAll()), del: (st, k) => tx(st, "readwrite", s => s.delete(k)), clear: st => tx(st, "readwrite", s => s.clear())};
+  })();
+  const KEEP = ["src", "acc", "name", "file", "path", "rel", "size", "mtime", "kind", "date", "w", "h", "albums", "url", "edited", "copias", "meta", "_vh"];
+  const limpio = it => { const o = {}; for(const k of KEEP) if(it[k] !== undefined) o[k] = it[k]; return o; };
+  async function guardarFuente(src){
+    if(!cfg.guardar) return;
+    src.sid = src.sid || (src.kind + "-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7));
+    // Los accesos a carpetas se guardan aparte y solo se leen al reconectar
+    try{
+      if(src.root){ await DB.put("raices", {id: src.sid, root: src.root}); S.raices.set(src.sid, src.root); }
+      await DB.put("fuentes", {sid: src.sid, kind: src.kind, acc: src.acc, note: (src.note || "").replace(/ · índice guardado$/, ""), fecha: src.fecha || 0, savedAt: Date.now(), conRaiz: !!(src.root || src.conRaiz), items: src.items.map(limpio)});
+      renderSaved();
+    }
+    catch(e){ toast("No se pudo guardar en este navegador: " + e.message); }
+  }
+  // Las huellas visuales calculadas se guardan con la fuente (para no recalcular)
+  async function actualizarGuardadas(){ for(const s of S.cloud.concat(S.local)) if(s.sid && cfg.guardar) await guardarFuente(s); }
+  async function renderSaved(){
+    let L = [];
+    try{ L = await DB.all("fuentes"); }catch(e){}
+    $("#savedCard").classList.toggle("hide", !L.length);
+    const usadas = new Set(S.cloud.concat(S.local).map(s => s.sid));
+    L.sort((x, y) => y.savedAt - x.savedAt);
+    $("#savedList").innerHTML = L.map(s => `<div class="src"><div class="t"><b>${s.kind === "takeout" ? "📦" : s.kind === "picker" ? "🔑" : "💻"} ${esc(s.acc)}</b>
+      <div class="xs mut">${s.kind === "takeout" ? "Takeout" : s.kind === "picker" ? "Fotos elegidas" : "Dispositivo"} · ${num(s.items.length)} archivos · guardada el ${new Date(s.savedAt).toLocaleString("es-AR", {day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"})}${s.kind === "takeout" && s.fecha ? " · Takeout del " + new Date(s.fecha).toLocaleDateString("es-AR") : ""}</div></div>
+      ${usadas.has(s.sid) ? '<span class="badge">en uso</span>' : `<button class="btn xs" data-use="${esc(s.sid)}" type="button">${s.conRaiz ? "Reconectar carpeta" : "Usar"}</button>`}
+      <button class="btn xs" data-unsave="${esc(s.sid)}" type="button" title="Borrar de este navegador">🗑</button></div>`).join("");
+  }
+  document.addEventListener("click", async e => {
+    const u = e.target.closest("[data-use]"), d = e.target.closest("[data-unsave]");
+    if(d){
+      const dd = dlg(`<h3>Borrar de este navegador</h3><p>Se borra solo el índice guardado. Tus archivos y Google Fotos no se tocan.</p><div class="acts"><button class="btn" data-x type="button">Cancelar</button><button class="btn pri" id="unsOk" type="button">Borrar</button></div>`);
+      dd.querySelector("#unsOk").onclick = async () => { await DB.del("fuentes", d.dataset.unsave); dd.close(); renderSaved(); };
+      return;
+    }
+    if(!u) return;
+    const all = await DB.all("fuentes"), s = all.find(x => x.sid === u.dataset.use); if(!s) return;
+    const rr = s.kind === "local" && s.conRaiz ? await raiz(s.sid) : null;
+    if(rr){
+      try{
+        let p = await rr.queryPermission({mode: "read"});
+        if(p !== "granted") p = await rr.requestPermission({mode: "read"});
+        if(p === "granted"){
+          st("#locSt", "Revisando la carpeta…");
+          const list = await recorrer(rr);
+          await addLocal(list, {root: rr, total: list.total, acc: s.acc, sid: s.sid, cache: new Map(s.items.map(x => [x.rel, x]))});
+          renderSaved(); return;
+        }
+      }catch(err){}
+      toast("No se pudo reconectar la carpeta: se usa el índice guardado (sin miniaturas ni apartar).");
+    }
+    const src = {id: S.nid++, kind: s.kind, acc: s.acc, items: s.items, sid: s.sid, fecha: s.fecha, conRaiz: !!s.conRaiz, guardada: true, note: (s.note || "") + " · índice guardado"};
+    (s.kind === "local" ? S.local : S.cloud).push(src);
+    renderSources(); renderSaved();
+  });
+  $("#optSave").checked = cfg.guardar;
+  $("#optSave").onchange = () => { cfg.guardar = $("#optSave").checked; saveCfg(); };
+
+  // ---------- Historial ----------
+  async function guardarHistorial(R, extra){
+    if(!cfg.guardar) return;
+    const sum = (rows, f) => rows.reduce((a, r) => a + (f(r) || 0), 0);
+    const h = {at: Date.now(), extra: extra || "", fuentes: S.cloud.map(s => ({lado: "nube", acc: s.acc, kind: s.kind, n: s.items.length})).concat(S.local.map(s => ({lado: "local", acc: s.acc, kind: s.kind, n: s.items.length}))),
+      nube: R.cloud.length, local: R.local.length, soloNube: R.rows.nube.length, soloLocal: R.rows.local.length, ambos: R.rows.ambos.length, dudosos: R.rows.dudoso.length,
+      dups: R.dups.length, libera: sum(R.dups, g => g.libera), seguro: sum(R.rows.rev.filter(r => r.est === "ok"), r => r.l.size), localBytes: sum(R.local, x => x.size)};
+    try{ await DB.put("historial", h); }catch(e){}
+  }
+  async function verHistorial(){
+    let H = []; try{ H = (await DB.all("historial")).sort((a, b) => b.at - a.at); }catch(e){}
+    const d = dlg(`<h3>🕘 Historial de comparaciones</h3>${H.length ? `<div style="max-height:60vh;overflow:auto"><table class="carp"><tr><th>Fecha</th><th>Fuentes</th><th class="n">Solo nube</th><th class="n">Solo disp.</th><th class="n">En ambos</th><th class="n">Copia exacta</th><th class="n">Duplicados</th></tr>
+      ${H.map(h => `<tr><td>${new Date(h.at).toLocaleString("es-AR", {day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit"})}${h.extra ? `<div class="xs mut">${esc(h.extra)}</div>` : ""}</td>
+        <td class="xs">${h.fuentes.map(f => (f.lado === "nube" ? "☁️ " : "💻 ") + esc(f.acc) + " (" + num(f.n) + ")").join("<br>")}</td>
+        <td class="n">${num(h.soloNube)}</td><td class="n">${num(h.soloLocal)}</td><td class="n">${num(h.ambos)}</td><td class="n">${fmtSize(h.seguro)}</td><td class="n">${num(h.dups)}<div class="xs mut">${fmtSize(h.libera)}</div></td></tr>`).join("")}</table></div>` : '<p class="mut">Todavía no hay comparaciones guardadas.</p>'}
+      <div class="acts">${H.length ? '<button class="btn" id="hClr" type="button">Borrar historial</button>' : ""}<button class="btn pri" data-x type="button">Cerrar</button></div>`);
+    const c = d.querySelector("#hClr"); if(c) c.onclick = async () => { await DB.clear("historial"); verHistorial(); };
   }
 
   // ---------- Comparar ----------
@@ -1049,7 +1199,7 @@ if(typeof module !== "undefined") module.exports = FC;
     cfg.tol = +$("#optTol").value; cfg.huso = $("#optHuso").checked; cfg.prob = $("#optProb").checked; saveCfg();
     if(S.res) runCompare();
   });
-  $("#cmpBtn").onclick = () => runCompare();
+  $("#cmpBtn").onclick = () => { runCompare(); guardarHistorial(S.res); };
   function runCompare(){
     const local = [].concat(...S.local.map(s => s.items)), cloud = [].concat(...S.cloud.map(s => s.items));
     const R = FC.compare(local, cloud, {tol: cfg.tol, huso: cfg.huso, probableCuenta: cfg.prob});
@@ -1060,6 +1210,9 @@ if(typeof module !== "undefined") module.exports = FC;
     R.dups = FC.dupes(local, {tol: cfg.tol}, idx(local)(S.vis.dupL)).map(g => Object.assign(g, {lado: "local"}))
       .concat(FC.dupes(cloud, {tol: cfg.tol}, idx(cloud)(S.vis.dupC)).map(g => Object.assign(g, {lado: "nube"})));
     R.rows.dup = R.dups;
+    R.rows.rev = R.L.filter(x => x.cat === "ambos").map(x => ({l: x.it, c: cloud[x.m.ci], m: x.m}));
+    R.rows.rev.forEach(r => r.est = estado(r));
+    R.rows.carp = carpetas(R);
     S.res = R;
     const srcs = [...new Set(S.cloud.map(s => "☁️ " + s.acc).concat(S.local.map(s => "💻 " + s.acc)))];
     const prev = $("#fSrc").value;
@@ -1143,6 +1296,7 @@ if(typeof module !== "undefined") module.exports = FC;
     calcVisPairs(); runCompare();
     S.vis.info = {noAn, videos, err: fotos.filter(x => x._vh === null).length, picErr: fotos.some(x => x.src === "picker" && x._vh === null), parcial: visStop};
     visResumen();
+    guardarHistorial(S.res, "con comparación visual"); actualizarGuardadas();
   };
   function calcVisPairs(){
     const thr = cfg.visThr;
@@ -1164,7 +1318,7 @@ if(typeof module !== "undefined") module.exports = FC;
     st("#visSt", `${I.parcial ? "⏸ Detenido. " : "✅ "}${num(nv)} coincidencia${nv === 1 ? "" : "s"} visual${nv === 1 ? "" : "es"} nueva${nv === 1 ? "" : "s"} y ${num(nd)} grupo${nd === 1 ? "" : "s"} de duplicados visuales.` + (extra.length ? " " + extra.join(" · ") + "." : ""));
   }
 
-  const TABS = [["nube", "☁️ Solo en la nube"], ["local", "💻 Solo en el dispositivo"], ["ambos", "✅ En ambos"], ["dudoso", "❓ Dudosos"], ["dup", "🧬 Duplicados"]];
+  const TABS = [["nube", "☁️ Solo en la nube"], ["local", "💻 Solo en el dispositivo"], ["ambos", "✅ En ambos"], ["dudoso", "❓ Dudosos"], ["dup", "🧬 Duplicados"], ["rev", "🔍 Revisar respaldos"], ["carp", "📂 Por carpeta"]];
   function renderRes(){
     const R = S.res; if(!R) return;
     const byLv = {}; R.rows.ambos.forEach(r => byLv[r.m.lv] = (byLv[r.m.lv] || 0) + 1);
@@ -1174,20 +1328,27 @@ if(typeof module !== "undefined") module.exports = FC;
       ["local", R.rows.local.length, "Solo en el dispositivo", `de ${num(R.local.length)} en el dispositivo · no están en la nube`],
       ["ambos", R.rows.ambos.length, "En ambos", lvTxt || "—"],
       ["dudoso", R.rows.dudoso.length, "Dudosos", "revisalos vos"],
-      ["dup", R.dups.length, "Grupos de duplicados", R.dups.length ? `se liberarían ${fmtSize(R.dups.reduce((a, g) => a + g.libera, 0))}` : "sin duplicados"]
+      ["dup", R.dups.length, "Grupos de duplicados", R.dups.length ? `se liberarían ${fmtSize(R.dups.reduce((a, g) => a + g.libera, 0))}` : "sin duplicados"],
+      ["rev", R.rows.rev.filter(r => r.est === "ok").length, "Con copia exacta en la nube", `${fmtSize(R.rows.rev.filter(r => r.est === "ok").reduce((a, r) => a + r.l.size, 0))} · revisalos antes de decidir`]
     ].map(([k, n, t, s]) => `<button class="tile${S.tab === k ? " on" : ""}" data-tab="${k}" type="button"><div class="n">${num(n)}</div><div><b>${t}</b></div><div class="xs mut">${s}</div></button>`).join("");
     $("#tabs").innerHTML = TABS.map(([k, t]) => `<button class="tab${S.tab === k ? " on" : ""}" data-tab="${k}" type="button">${t} (${num(R.rows[k].length)})</button>`).join("");
     $("#fLv").classList.toggle("hide", !(S.tab === "ambos"));
     $("#fDup").classList.toggle("hide", S.tab !== "dup");
+    $("#fEst").classList.toggle("hide", S.tab !== "rev");
+    $("#fLv").classList.toggle("hide", S.tab !== "ambos");
+    for(const s of [...S.sel]) if(!R.rows.rev.some(r => r.l === s && r.est === "ok")) S.sel.delete(s);
     renderList();
   }
   document.addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if(!b) return; S.tab = b.dataset.tab; S.shown = 100; renderRes(); });
-  ["#fQ", "#fKind", "#fSrc", "#fLv", "#fDup"].forEach(id => $(id).addEventListener("input", () => { S.shown = 100; renderList(); }));
+  ["#fQ", "#fKind", "#fSrc", "#fLv", "#fDup", "#fEst"].forEach(id => $(id).addEventListener("input", () => { S.shown = 100; renderList(); }));
   const srcLbl = it => (it.src === "local" ? "💻 " : "☁️ ") + it.acc;
   function filtered(){
     const q = $("#fQ").value.trim().toLowerCase(), k = $("#fKind").value, sr = $("#fSrc").value, lv = S.tab === "ambos" ? $("#fLv").value : "";
-    const ld = S.tab === "dup" ? $("#fDup").value : "";
+    const ld = S.tab === "dup" ? $("#fDup").value : "", es = S.tab === "rev" ? $("#fEst").value : "";
+    if(S.tab === "carp") return S.res.rows.carp.filter(n => (!sr || sr === "💻 " + n.acc) && (!q || (n.acc + "/" + n.path).toLowerCase().includes(q)));
     return S.res.rows[S.tab].filter(r => {
+      if(es && r.est !== es) return false;
+      if(S.tab === "rev" && S.carpeta && !enCarpeta(r.l, S.carpeta)) return false;
       if(ld && r.lado !== ld) return false;
       const its = S.tab === "dup" ? r.items : [r.l, r.c].filter(Boolean);
       if(k && !its.some(i => i.kind === k)) return false;
@@ -1213,7 +1374,32 @@ if(typeof module !== "undefined") module.exports = FC;
   function renderList(){
     const rows = filtered(), show = rows.slice(0, S.shown);
     const pair = S.tab === "ambos" || S.tab === "dudoso";
+    renderPre();
+    $("#selbar").classList.toggle("hide", S.tab !== "rev");
+    if(S.tab === "rev") renderSel();
+    if(S.tab === "carp"){
+      $("#list").innerHTML = show.length ? `<div style="overflow:auto"><table class="carp"><tr><th>Carpeta</th><th class="n">Archivos</th><th class="n">Tamaño</th><th>Respaldo</th><th class="n">Copia exacta</th><th></th></tr>${show.map(n => {
+        const pb = x => n.b ? (x / n.b * 100) : 0, prot = protegida(n.path) && n.path;
+        return `<tr><td style="padding-left:${6 + n.depth * 16}px">${n.depth ? "📁" : "💻"} <b>${esc(n.name)}</b>${prot ? ' <span class="badge b-dudoso">🔒 protegida</span>' : ""}</td>
+          <td class="n">${num(n.n)}</td><td class="n">${fmtSize(n.b)}</td>
+          <td><div class="bar" title="Verde: copia exacta · Amarillo: coincidencia no exacta · Rojo: sin respaldo"><i style="width:${pb(n.ok[1])}%;background:var(--ok)"></i><i style="width:${pb(n.prob[1])}%;background:var(--mid)"></i><i style="width:${pb(n.no[1])}%;background:var(--bad)"></i></div>
+            <div class="xs mut">${num(n.ok[0])} exactas · ${num(n.prob[0])} no exactas · ${num(n.no[0])} sin respaldo</div></td>
+          <td class="n"><b>${Math.round(pb(n.ok[1]))}%</b><div class="xs mut">${fmtSize(n.ok[1])}</div></td>
+          <td style="white-space:nowrap"><button class="btn xs" data-revc="${esc(n.key)}" type="button">🔍 Revisar</button>${n.depth ? ` <button class="btn xs" data-prot="${esc(n.path)}" type="button">${prot ? "🔓 Desproteger" : "🔒 Proteger"}</button>` : ""}</td></tr>`;
+      }).join("")}</table></div>` : '<div class="empty">No hay carpetas.</div>';
+      $("#more").innerHTML = rows.length > S.shown ? `<button class="btn" id="moreBtn" type="button">Ver más (${num(rows.length - S.shown)} restantes)</button>` : "";
+      const mb2 = $("#moreBtn"); if(mb2) mb2.onclick = () => { S.shown += 100; renderList(); };
+      S.cur = rows; return;
+    }
     $("#list").innerHTML = show.length ? show.map((r, i) => {
+      if(S.tab === "rev"){
+        const ok = r.est === "ok", cls = {ok: "est-ok", blk: "est-blk", ver: "est-ver", apa: "mut"}[r.est];
+        const txt = {ok: "✔ Se puede marcar", blk: "⛔ Bloqueado", ver: "🔎 Para verificar", apa: "📦 Apartado"}[r.est];
+        const puedeVer = r.est !== "apa" && r.l.blob && r.c.ent && r.l.size === r.c.size && r.l._hashOk === undefined;
+        return `<div class="it pair rv"><input type="checkbox" data-sel="${i}" ${ok ? "" : "disabled"} ${S.sel.has(r.l) ? "checked" : ""} title="${ok ? "Marcar" : "No se puede marcar: " + esc(r.motivo)}">${cell(r.l)}${cell(r.c)}
+          <div class="acts"><b class="sm ${cls}">${txt}</b><span class="badge b-${r.m.lv}">${FC.LV_TXT[r.m.lv]}</span><div class="why mut" style="max-width:240px;text-align:right">${esc(r.motivo)}</div>
+          ${puedeVer ? `<button class="btn xs" data-hash="${i}" type="button">🔎 Verificar huella</button>` : ""}</div></div>`;
+      }
       if(S.tab === "dup") return `<div class="grp"><div class="gh"><b>${r.lado === "nube" ? "☁️ Nube" : "💻 Dispositivo"} · ${r.items.length} copias</b>
         <span class="badge ${r.visual ? "b-visual" : "b-exacto"}">${r.visual ? "Visual" : "Idénticos"}</span><span class="mut">${esc(r.why)}</span>
         ${r.libera ? `<span class="mut">· se liberarían ${fmtSize(r.libera)}</span>` : ""}</div>
@@ -1224,7 +1410,7 @@ if(typeof module !== "undefined") module.exports = FC;
         <div class="why mut">${esc(r.m.why)}</div>
         ${canHash ? `<button class="btn xs" data-hash="${i}" type="button">🔎 Verificar huella</button>` : ""}
         ${r.c && r.c.url ? `<a class="btn xs" href="${esc(r.c.url)}" target="_blank" rel="noopener">Ver en Google Fotos ↗</a>` : ""}</div></div>`;
-    }).join("") : `<div class="empty">${S.res.rows[S.tab].length ? "Nada coincide con el filtro." : S.tab === "nube" ? "🎉 Todo lo de la nube está en el dispositivo." : S.tab === "local" ? "🎉 Todo lo del dispositivo está en la nube." : S.tab === "dup" ? "No se encontraron duplicados." : "No hay elementos."}</div>`;
+    }).join("") : `<div class="empty">${S.res.rows[S.tab].length ? "Nada coincide con el filtro." : S.tab === "nube" ? "🎉 Todo lo de la nube está en el dispositivo." : S.tab === "local" ? "🎉 Todo lo del dispositivo está en la nube." : S.tab === "dup" ? "No se encontraron duplicados." : S.tab === "rev" ? "No hay archivos del dispositivo con pareja en la nube para este filtro." : "No hay elementos."}</div>`;
     $("#more").innerHTML = rows.length > S.shown ? `<button class="btn" id="moreBtn" type="button">Ver más (${num(rows.length - S.shown)} restantes)</button>` : (rows.length ? `<span class="xs mut">${num(rows.length)} elemento${rows.length > 1 ? "s" : ""}</span>` : "");
     const mb = $("#moreBtn"); if(mb) mb.onclick = () => { S.shown += 100; renderList(); };
     S.cur = rows;
@@ -1265,6 +1451,7 @@ if(typeof module !== "undefined") module.exports = FC;
     const b = e.target.closest("[data-hash]"); if(!b) return;
     const r = S.cur[+b.dataset.hash]; if(!r) return;
     if(r.l.size !== r.c.size){ b.outerHTML = `<span class="badge b-probable" title="Puede ser la misma foto recomprimida o editada">Tamaño distinto: no son copias idénticas</span>`; return; }
+    if(S.tab === "rev"){ b.disabled = true; b.textContent = "Calculando…"; await verificarPar(r.l, r.c); refrescarRev(); return; }
     if(r.l.size > 1024 * 1048576){ toast("El archivo es muy grande para verificarlo en el navegador (más de 1 GB)."); return; }
     b.disabled = true; b.textContent = "Calculando…";
     try{
@@ -1303,8 +1490,8 @@ if(typeof module !== "undefined") module.exports = FC;
     a.download = `fotoscompare-${nombre}-${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
   }
-  $("#csvTab").onclick = () => S.res && (S.tab === "dup" ? csvDup(filtered()) : csv([[S.tab, filtered()]]));
-  $("#csvAll").onclick = () => S.res && csv(TABS.filter(([k]) => k !== "dup").map(([k]) => [k, S.res.rows[k]]));
+  $("#csvTab").onclick = () => S.res && (S.tab === "dup" ? csvDup(filtered()) : S.tab === "rev" ? csvRev(filtered(), "revisar") : S.tab === "carp" ? csvCarp(filtered()) : csv([[S.tab, filtered()]]));
+  $("#csvAll").onclick = () => S.res && csv(TABS.filter(([k]) => !["dup", "rev", "carp"].includes(k)).map(([k]) => [k, S.res.rows[k]]));
 
   // ---------- Menú, ayuda, configuración ----------
   $("#menuBtn").onclick = e => { e.stopPropagation(); $("#menu").classList.toggle("hide"); };
@@ -1315,10 +1502,12 @@ if(typeof module !== "undefined") module.exports = FC;
     if(m === "tema"){ const k = Object.keys(TEMAS); cfg.tema = k[(k.indexOf(cfg.tema) + 1) % k.length]; saveCfg(); aplicarTema(); return; }
     $("#menu").classList.add("hide");
     if(m === "ayuda") ayuda();
+    if(m === "hist") verHistorial();
+    if(m === "apart") verApartados();
     if(m === "google") confGoogle();
     if(m === "limpiar"){
       const d = dlg(`<h3>Empezar de nuevo</h3><p>Se quitan todas las fuentes y el resultado. Tus archivos no se tocan.</p><div class="acts"><button class="btn" data-x type="button">Cancelar</button><button class="btn pri" id="clrOk" type="button">Empezar de nuevo</button></div>`);
-      d.querySelector("#clrOk").onclick = () => { S.cloud = []; S.local = []; S.res = null; S.vis = {pairs: [], dupL: [], dupC: []}; st("#visSt", ""); clearThumbs(); $("#resCard").classList.add("hide"); ["#tkSt", "#pkSt", "#locSt"].forEach(i => st(i, "")); renderSources(); d.close(); };
+      d.querySelector("#clrOk").onclick = () => { S.cloud = []; S.local = []; S.res = null; S.vis = {pairs: [], dupL: [], dupC: []}; S.sel = new Set(); S.carpeta = null; renderSaved(); st("#visSt", ""); clearThumbs(); $("#resCard").classList.add("hide"); ["#tkSt", "#pkSt", "#locSt"].forEach(i => st(i, "")); renderSources(); d.close(); };
     }
   });
   $("#helpBtn").onclick = () => ayuda();
@@ -1335,7 +1524,7 @@ if(typeof module !== "undefined") module.exports = FC;
       <li>Tocá <b>Anular selección</b> y marcá solo <b>Google Fotos</b> (podés elegir algunos álbumes o años para probar).</li>
       <li>Formato <b>.zip</b>. Elegí el tamaño más grande que te convenga: si sale en varias partes, en la app elegí <b>todas juntas</b>.</li>
       <li>Cuando llegue el mail, descargá los .zip. No hace falta descomprimirlos: la app los lee directo.</li></ol>
-      <p class="mut">Takeout es una copia del momento en que lo pediste: lo que subas después no aparece hasta el próximo.</p>
+      <p class="mut">Takeout es una copia del momento en que lo pediste: lo que subas después no aparece hasta el próximo. Takeout no incluye la "Carpeta bloqueada" de Google Fotos.</p>
       <h4>2. Nube: conectar la cuenta (fotos que elijas)</h4>
       <p>Desde 2025 Google no deja que otras apps lean toda la biblioteca. Con esta opción se abre Google Fotos, elegís qué comparar (hasta 2000 por vez) y tocás <b>Listo</b>.</p>
       <p><b>Configuración inicial, una sola vez</b>, en el proyecto de Google Cloud de multigdrive (<a href="https://console.cloud.google.com" target="_blank" rel="noopener">console.cloud.google.com</a>):</p>
@@ -1360,11 +1549,252 @@ if(typeof module !== "undefined") module.exports = FC;
       <h4>🧬 Duplicados</h4>
       <p>Agrupa copias repetidas <b>dentro</b> del dispositivo y <b>dentro</b> de la nube (por ejemplo, la misma foto en dos cuentas). Son idénticos si coincide el tamaño y además el nombre o la fecha y hora. Después de usar 🧠 también aparecen los duplicados visuales. "Se liberarían" es lo que ocupan las copias sin contar la más pesada.</p>
       <p class="mut">La misma foto en la carpeta del año y en un álbum del Takeout no cuenta como duplicado: es una sola foto en Google Fotos.</p>
+      <h4>🔍 Revisar respaldos</h4>
+      <p>Muestra lo que está en el dispositivo <b>y</b> en la nube, para que <b>vos</b> decidas qué hacer. La app <b>nunca borra</b>:</p>
+      <ul><li><b>Nada viene marcado.</b> Marcás archivo por archivo, o "los visibles" del filtro que elegiste, con confirmación.</li>
+      <li>Solo se pueden marcar los que tienen <b>copia exacta</b> en la nube: mismo tamaño y mismo nombre o fecha, o huella verificada. Si la copia de la nube pesa menos (recomprimida por "Ahorro de espacio"), queda <b>bloqueado</b>.</li>
+      <li>Elegís <b>qué cuentas valen como respaldo</b>, <b>carpetas protegidas</b> que nunca se tocan y si querés <b>exigir la huella verificada</b>.</li>
+      <li><b>📦 Apartar</b> (solo en la PC, con Chrome o Edge y la carpeta elegida con "Elegir carpeta"): mueve los marcados a <code>_para_borrar</code> dentro de esa carpeta y deja un registro. Con <b>⋯ → Apartados</b> los devolvés a su lugar. El borrado definitivo lo hacés vos.</li>
+      <li>En el celular se puede revisar y exportar la lista. <b>Cuidado:</b> en la app de Google Fotos, "Mover a la papelera" borra también de la nube; para borrar solo del celular usá "Eliminar del dispositivo" o el administrador de archivos.</li></ul>
+      <h4>📂 Por carpeta</h4>
+      <p>Árbol de carpetas del dispositivo con cuánto tiene copia exacta, copia no exacta o ningún respaldo. Desde ahí podés revisar una carpeta o protegerla.</p>
+      <h4>💾 Guardado e historial</h4>
+      <p>Los índices (no las fotos) se guardan en este navegador para no releer los .zip. Las carpetas de la PC se pueden reconectar. Cada comparación queda en <b>⋯ → Historial</b>. Un índice guardado de Takeout sirve para comparar, pero para verificar huellas o ver miniaturas hay que volver a cargar los .zip.</p>
       <h4>Privacidad</h4>
       <p>Los archivos se leen en este navegador y no se suben a ningún lado. El acceso a Google dura una hora y no se guarda.</p></div>
       <div class="acts"><button class="btn pri" data-x type="button">Cerrar</button></div>`);
   }
 
+  // ---------- Revisar respaldos ----------
+  const cuentaOk = acc => !cfg.cuentasNo.includes(acc);
+  const protegida = p => !!p && cfg.protegidas.some(x => p === x || p.startsWith(x + "/"));
+  const enCarpeta = (l, k) => l.acc === k.acc && (!k.path || FC.dirName(l.path) === k.path || FC.dirName(l.path).startsWith(k.path + "/"));
+  function estado(r){
+    const l = r.l, c = r.c, m = r.m;
+    if(l.apartado){ r.motivo = "ya está apartado en _para_borrar"; return "apa"; }
+    if(protegida(FC.dirName(l.path)) || protegida(l.path)){ r.motivo = "está en una carpeta protegida"; return "blk"; }
+    if(!cuentaOk(c.acc)){ r.motivo = `la cuenta "${c.acc}" no está elegida como respaldo`; return "blk"; }
+    if(c.src === "picker"){ r.motivo = "las fotos elegidas en vivo no traen tamaño: no se puede confirmar que sea una copia exacta"; return "blk"; }
+    if(!c.size || !l.size || c.size !== l.size){ r.motivo = c.size && c.size < l.size ? "la copia de la nube pesa menos (posible recompresión): perderías calidad" : "la copia de la nube no tiene el mismo tamaño"; return "blk"; }
+    if(l._hashOk === true){ r.motivo = "huella verificada: idénticos byte a byte"; return "ok"; }
+    if(l._hashOk === false){ r.motivo = "la huella no coincide: el contenido es distinto"; return "blk"; }
+    const puede = !!(l.blob && c.ent);
+    if((m.lv === "exacto" || m.lv === "identico") && !cfg.exigirHuella){ r.motivo = m.lv === "exacto" ? "mismo nombre y tamaño" : "mismo tamaño y misma fecha y hora"; return "ok"; }
+    r.motivo = cfg.exigirHuella ? "falta verificar la huella" : "mismo tamaño, pero la coincidencia no es exacta: verificá la huella";
+    if(!puede){ r.motivo += " (para verificar hay que tener cargados los .zip y la carpeta)"; return "blk"; }
+    return "ver";
+  }
+  async function verificarPar(l, c){
+    try{
+      if(!l.blob || !c.ent || l.size !== c.size) return null;
+      if(l.size > 1024 * 1048576) return null;
+      const h = async b => new Uint8Array(await crypto.subtle.digest("SHA-256", await b.arrayBuffer())).join(",");
+      const [x, y] = await Promise.all([h(l.blob), FC.entBlob(c.ent).then(h)]);
+      l._hashOk = x === y; return l._hashOk;
+    }catch(e){ return null; }
+  }
+  function refrescarRev(){ if(!S.res) return; S.res.rows.rev.forEach(r => r.est = estado(r)); S.res.rows.carp = carpetas(S.res); renderRes(); }
+  function carpetas(R){
+    const est = new Map(R.rows.rev.map(r => [r.l, r.est]));
+    const M = new Map();
+    for(const x of R.L){
+      const l = x.it, e = x.cat !== "ambos" ? "no" : est.get(l) === "ok" ? "ok" : "prob";
+      const segs = FC.dirName(l.path).split("/").filter(Boolean);
+      for(let d = 0; d <= segs.length; d++){
+        const path = segs.slice(0, d).join("/"), key = l.acc + "|" + path;
+        let n = M.get(key);
+        if(!n) M.set(key, n = {key, acc: l.acc, path, name: d ? segs[d - 1] : l.acc, depth: d, n: 0, b: 0, ok: [0, 0], prob: [0, 0], no: [0, 0]});
+        n.n++; n.b += l.size || 0; n[e][0]++; n[e][1] += l.size || 0;
+      }
+    }
+    return [...M.values()].sort((a, b) => a.acc === b.acc ? (a.path.split("/").join("\u0001")).localeCompare(b.path.split("/").join("\u0001"), "es") : a.acc.localeCompare(b.acc, "es"));
+  }
+  function renderPre(){
+    const P = $("#pre");
+    if(S.tab !== "rev" && S.tab !== "carp"){ P.innerHTML = ""; return; }
+    const tk = S.cloud.filter(s => s.kind === "takeout"), avisos = [];
+    for(const s of tk){
+      if(!s.fecha) avisos.push(`No se sabe la fecha del Takeout de <b>${esc(s.acc)}</b>: algo pudo haberse borrado de la nube después.`);
+      else { const dias = Math.floor((Date.now() - s.fecha) / 864e5); if(dias > 14) avisos.push(`El Takeout de <b>${esc(s.acc)}</b> tiene ${dias} días: algo pudo haberse borrado de la nube después. Conviene pedir uno nuevo antes de apartar.`); }
+    }
+    const accs = [...new Set(S.cloud.map(s => s.acc))];
+    const chipC = S.carpeta ? `<div class="row" style="margin:4px 0 8px"><span class="chip">📂 ${esc(S.carpeta.acc)}${S.carpeta.path ? " / " + esc(S.carpeta.path) : ""} <button data-carpx type="button" title="Quitar filtro">✕</button></span></div>` : "";
+    P.innerHTML = (S.tab === "rev" ? `<div class="note">La app <b>nunca borra</b>: nada viene marcado, solo se pueden marcar copias exactas y "Apartar" mueve los archivos a <code>_para_borrar</code> (se puede deshacer).${FSA ? "" : " En este navegador solo se puede revisar y exportar la lista."}</div>` : "") +
+      avisos.map(x => `<div class="warn">⚠️ ${x}</div>`).join("") +
+      `<details class="reglas"${S.reglasOpen ? " open" : ""}><summary>🛡️ Reglas de seguridad</summary>
+        <div style="margin-top:8px"><b class="sm">Cuentas que valen como respaldo</b><div class="row" style="margin-top:4px">${accs.map(x => `<label class="chk"><input type="checkbox" data-cta="${esc(x)}" ${cuentaOk(x) ? "checked" : ""}> ${esc(x)}</label>`).join("") || '<span class="mut sm">Sin cuentas cargadas.</span>'}</div></div>
+        <div style="margin-top:10px"><b class="sm">Carpetas protegidas</b> <span class="xs mut">(nunca se pueden marcar)</span><div>${cfg.protegidas.map(p => `<span class="chip">🔒 ${esc(p)} <button data-unprot="${esc(p)}" type="button">✕</button></span>`).join("") || '<span class="mut sm">Ninguna. Se agregan desde "📂 Por carpeta" o acá.</span>'}</div>
+          <div class="row" style="margin-top:6px"><input type="text" id="protIn" placeholder="Ruta de la carpeta (ej. Imágenes/Familia)" style="flex:1;min-width:180px"><button class="btn xs" id="protAdd" type="button">🔒 Proteger</button></div></div>
+        <div style="margin-top:10px"><label class="chk"><input type="checkbox" id="exHu" ${cfg.exigirHuella ? "checked" : ""}> Exigir huella verificada (byte a byte) para poder marcar</label></div>
+      </details>` + chipC;
+    P.querySelector("details").ontoggle = e => { S.reglasOpen = e.target.open; };
+    P.querySelectorAll("[data-cta]").forEach(c => c.onchange = () => { const x = c.dataset.cta; cfg.cuentasNo = cfg.cuentasNo.filter(y => y !== x); if(!c.checked) cfg.cuentasNo.push(x); saveCfg(); refrescarRev(); });
+    P.querySelectorAll("[data-unprot]").forEach(b => b.onclick = () => { cfg.protegidas = cfg.protegidas.filter(p => p !== b.dataset.unprot); saveCfg(); refrescarRev(); });
+    const pa = P.querySelector("#protAdd"); if(pa) pa.onclick = () => { const v = P.querySelector("#protIn").value.trim().replace(/[\\/]+$/, "").replace(/\\/g, "/"); if(v && !cfg.protegidas.includes(v)){ cfg.protegidas.push(v); saveCfg(); refrescarRev(); } };
+    const ex = P.querySelector("#exHu"); if(ex) ex.onchange = () => { cfg.exigirHuella = ex.checked; saveCfg(); refrescarRev(); };
+    const cx = P.querySelector("[data-carpx]"); if(cx) cx.onclick = () => { S.carpeta = null; S.shown = 100; renderList(); };
+  }
+  document.addEventListener("click", e => {
+    const rc = e.target.closest("[data-revc]"), pr = e.target.closest("[data-prot]");
+    if(rc){ const n = S.res.rows.carp.find(x => x.key === rc.dataset.revc); if(n){ S.carpeta = {acc: n.acc, path: n.path}; S.tab = "rev"; S.shown = 100; renderRes(); } }
+    if(pr){ const p = pr.dataset.prot; if(cfg.protegidas.includes(p)) cfg.protegidas = cfg.protegidas.filter(x => x !== p); else cfg.protegidas.push(p); saveCfg(); refrescarRev(); }
+  });
+  document.addEventListener("change", e => {
+    const c = e.target.closest("[data-sel]"); if(!c) return;
+    const r = S.cur[+c.dataset.sel]; if(!r || r.est !== "ok"){ c.checked = false; return; }
+    if(c.checked) S.sel.add(r.l); else S.sel.delete(r.l);
+    renderSel();
+  });
+  const selRows = () => S.res ? S.res.rows.rev.filter(r => S.sel.has(r.l) && r.est === "ok") : [];
+  function renderSel(){
+    const rs = selRows(), b = rs.reduce((a, r) => a + r.l.size, 0);
+    $("#selbar").innerHTML = `<b>${num(rs.length)} marcado${rs.length === 1 ? "" : "s"}</b><span class="mut sm">${fmtSize(b)}</span><span class="sp" style="flex:1"></span>
+      <button class="btn xs" id="selVis" type="button">☑ Marcar los visibles que se puedan</button>
+      <button class="btn xs" id="selNone" type="button" ${rs.length ? "" : "disabled"}>Desmarcar todo</button>
+      <button class="btn xs" id="selHash" type="button">🔎 Verificar huellas</button>
+      <button class="btn xs" id="selCsv" type="button" ${rs.length ? "" : "disabled"}>⬇ CSV de lo marcado</button>
+      <button class="btn xs pri" id="selApa" type="button" ${rs.length && FSA ? "" : "disabled"} title="${FSA ? "" : "Solo en la PC con Chrome o Edge"}">📦 Apartar…</button>`;
+    $("#selVis").onclick = () => {
+      const ok = filtered().filter(r => r.est === "ok" && !S.sel.has(r.l));
+      if(!ok.length){ toast("No hay archivos para marcar en la vista actual."); return; }
+      const d = dlg(`<h3>Marcar los visibles</h3><p>Vas a marcar <b>${num(ok.length)}</b> archivo${ok.length === 1 ? "" : "s"} (${fmtSize(ok.reduce((a, r) => a + r.l.size, 0))}) de la vista actual${S.carpeta ? ` (carpeta <b>${esc(S.carpeta.path || S.carpeta.acc)}</b>)` : ""}${$("#fQ").value ? `, con la búsqueda "<b>${esc($("#fQ").value)}</b>"` : ""}.</p><p class="sm mut">Marcar no hace nada con los archivos: después los podés revisar y desmarcar.</p>
+        <div class="acts"><button class="btn" data-x type="button">Cancelar</button><button class="btn pri" id="mvOk" type="button">Marcar</button></div>`);
+      d.querySelector("#mvOk").onclick = () => { ok.forEach(r => S.sel.add(r.l)); d.close(); renderList(); };
+    };
+    $("#selNone").onclick = () => { S.sel.clear(); renderList(); };
+    $("#selCsv").onclick = () => csvRev(selRows(), "marcados");
+    $("#selHash").onclick = async () => {
+      const objs = filtered().filter(r => (r.est === "ver" || (r.est === "ok" && r.l._hashOk === undefined)) && r.l.blob && r.c.ent);
+      if(!objs.length){ toast("No hay huellas para verificar en la vista actual (hacen falta los .zip y la carpeta cargados)."); return; }
+      const bt = $("#selHash"); bt.disabled = true; let i = 0, ok = 0, mal = 0;
+      for(const r of objs){ const v = await verificarPar(r.l, r.c); if(v === true) ok++; else if(v === false) mal++; i++; bt.textContent = `Verificando ${i} de ${objs.length}…`; }
+      toast(`Huellas: ${ok} idénticas${mal ? `, ${mal} distintas (quedan bloqueadas)` : ""}.`);
+      refrescarRev();
+    };
+    $("#selApa").onclick = () => apartar();
+  }
+  function csvRev(rows, nombre){
+    const q = v => { const s = String(v ?? ""); return /[;"\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const E = {ok: "Se puede marcar", blk: "Bloqueado", ver: "Para verificar", apa: "Apartado"};
+    const lines = [["Estado", "Motivo", "Nivel", "Huella", "Dispositivo: nombre", "Dispositivo: fecha", "Dispositivo: tamaño (bytes)", "Dispositivo: origen", "Dispositivo: ruta", "Nube: nombre", "Nube: tamaño (bytes)", "Nube: cuenta", "Nube: ruta"].join(";")];
+    rows.forEach(r => lines.push([E[r.est], r.motivo, FC.LV_TXT[r.m.lv], r.l._hashOk === true ? "idénticos" : r.l._hashOk === false ? "distintos" : "", r.l.name, fmtD(r.l.date), r.l.size, r.l.acc, r.l.path, r.c.name, r.c.size || "", r.c.acc, r.c.path].map(q).join(";")));
+    bajar(lines, nombre);
+  }
+  function csvCarp(nodes){
+    const q = v => { const s = String(v ?? ""); return /[;"\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const lines = [["Origen", "Carpeta", "Archivos", "Tamaño (bytes)", "Copia exacta (archivos)", "Copia exacta (bytes)", "No exacta (archivos)", "Sin respaldo (archivos)", "Sin respaldo (bytes)", "Protegida"].join(";")];
+    nodes.forEach(n => lines.push([n.acc, n.path || "(todo)", n.n, n.b, n.ok[0], n.ok[1], n.prob[0], n.no[0], n.no[1], protegida(n.path) ? "sí" : ""].map(q).join(";")));
+    bajar(lines, "carpetas");
+  }
+
+  // ---------- Apartar (mover a _para_borrar) y deshacer ----------
+  async function dirDe(root, parts, create){ let d = root; for(const p of parts) d = await d.getDirectoryHandle(p, {create}); return d; }
+  async function existe(dir, name){ try{ await dir.getFileHandle(name); return true; }catch(e){ return false; } }
+  async function libre(dir, name){
+    if(!await existe(dir, name)) return name;
+    const i = name.lastIndexOf("."), b = i > 0 ? name.slice(0, i) : name, x = i > 0 ? name.slice(i) : "";
+    for(let k = 2; k < 1000; k++){ const n = `${b} (${k})${x}`; if(!await existe(dir, n)) return n; }
+    throw new Error("Demasiados archivos con el mismo nombre en el destino.");
+  }
+  // Mueve root/rel → root/dest (rutas relativas). Si el navegador no puede mover, copia, controla el tamaño y recién ahí quita el original.
+  async function mover(root, rel, dest){
+    const sp = rel.split("/"), sn = sp.pop(), dp = dest.split("/"), dn0 = dp.pop();
+    const sdir = await dirDe(root, sp, false), fh = await sdir.getFileHandle(sn);
+    const ddir = await dirDe(root, dp, true), dn = await libre(ddir, dn0);
+    if(typeof fh.move === "function"){ try{ await fh.move(ddir, dn); return dp.concat(dn).join("/"); }catch(e){} }
+    const f = await fh.getFile();
+    const out = await ddir.getFileHandle(dn, {create: true}), w = await out.createWritable();
+    await w.write(f); await w.close();
+    const chk = await (await ddir.getFileHandle(dn)).getFile();
+    if(chk.size !== f.size){ try{ await ddir.removeEntry(dn); }catch(e){} throw new Error("la copia no quedó completa; el original no se tocó"); }
+    await sdir.removeEntry(sn);
+    return dp.concat(dn).join("/");
+  }
+  const srcDe = l => S.local.find(s => s.items.includes(l));
+  function apartar(){
+    const rs = selRows(); if(!rs.length) return;
+    const conRaiz = rs.filter(r => { const s = srcDe(r.l); return s && s.root && r.l.rel; }), sin = rs.length - conRaiz.length;
+    const roots = [...new Set(conRaiz.map(r => srcDe(r.l)))];
+    const b = conRaiz.reduce((a, r) => a + r.l.size, 0);
+    const porCarpeta = {}; conRaiz.forEach(r => { const k = FC.dirName(r.l.path) || r.l.acc; porCarpeta[k] = (porCarpeta[k] || 0) + 1; });
+    const top = Object.entries(porCarpeta).sort((x, y) => y[1] - x[1]).slice(0, 6);
+    const d = dlg(`<h3>📦 Apartar a _para_borrar</h3>
+      ${conRaiz.length ? `<p>Se van a <b>mover</b> (no borrar) <b>${num(conRaiz.length)}</b> archivo${conRaiz.length === 1 ? "" : "s"} (${fmtSize(b)}) a:</p>
+      <ul class="sm">${roots.map(s => `<li><code>${esc(s.root.name)}/_para_borrar/</code> (se mantiene la estructura de carpetas)</li>`).join("")}</ul>
+      <p class="sm"><b>Carpetas:</b> ${top.map(([k, n]) => `${esc(k)} (${n})`).join(" · ")}${Object.keys(porCarpeta).length > 6 ? " · …" : ""}</p>
+      <p class="sm"><b>Ejemplos:</b> ${conRaiz.slice(0, 8).map(r => esc(r.l.name)).join(", ")}${conRaiz.length > 8 ? "…" : ""}</p>` : ""}
+      ${sin ? `<div class="warn">${num(sin)} marcado${sin === 1 ? "" : "s"} no se pueden apartar porque vienen de "Elegir archivos" o de un índice guardado sin reconectar. Para esos, exportá el CSV.</div>` : ""}
+      ${conRaiz.length ? `<p class="sm mut">Se guarda un registro en <code>_para_borrar</code> y en este navegador. Con <b>⋯ → Apartados</b> los podés devolver a su lugar. El borrado definitivo lo hacés vos.</p>
+      <label class="chk"><input type="checkbox" id="apChk"> Revisé la lista y quiero moverlos a _para_borrar</label>
+      <div class="prog hide" id="apProg"><i></i></div><div class="status" id="apSt"></div>` : ""}
+      <div class="acts"><button class="btn" data-x type="button">Cancelar</button>${conRaiz.length ? '<button class="btn pri" id="apOk" type="button" disabled>Apartar</button>' : ""}</div>`);
+    if(!conRaiz.length) return;
+    const chk = d.querySelector("#apChk"), ok = d.querySelector("#apOk");
+    chk.onchange = () => ok.disabled = !chk.checked;
+    ok.onclick = async () => {
+      ok.disabled = true; chk.disabled = true;
+      const perms = new Map();
+      for(const s of roots){ try{ let p = await s.root.queryPermission({mode: "readwrite"}); if(p !== "granted") p = await s.root.requestPermission({mode: "readwrite"}); perms.set(s, p === "granted"); }catch(e){ perms.set(s, false); } }
+      let i = 0, okn = 0; const errs = [];
+      const ts = new Date(), tss = ts.toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      for(const s of roots){
+        const rs2 = conRaiz.filter(r => srcDe(r.l) === s);
+        if(!perms.get(s)){ errs.push(`${s.root.name}: no se dio permiso para modificar la carpeta`); i += rs2.length; continue; }
+        const log = [];
+        for(const r of rs2){
+          try{ const dest = await mover(s.root, r.l.rel, "_para_borrar/" + r.l.rel); log.push({rel: r.l.rel, dest, size: r.l.size, name: r.l.name}); r.l.apartado = true; r.l.blob = null; S.sel.delete(r.l); okn++; }
+          catch(e){ errs.push(`${r.l.rel}: ${e.message}`); }
+          i++; d.querySelector("#apProg").classList.remove("hide"); d.querySelector("#apProg").firstChild.style.width = Math.round(i * 100 / conRaiz.length) + "%";
+          d.querySelector("#apSt").textContent = `Moviendo ${i} de ${conRaiz.length}…`;
+        }
+        if(log.length){
+          try{
+            const dir = await dirDe(s.root, ["_para_borrar"], true), fh = await dir.getFileHandle(`registro-${tss}.csv`, {create: true}), w = await fh.createWritable();
+            await w.write("﻿Ruta original;Ruta en _para_borrar;Tamaño (bytes)\r\n" + log.map(x => [x.rel, x.dest, x.size].join(";")).join("\r\n")); await w.close();
+          }catch(e){ errs.push("No se pudo escribir el registro en la carpeta: " + e.message); }
+          const oid = s.root.name + "-" + tss;
+          S.raices.set("ap-" + oid, s.root);
+          try{ await DB.put("raices", {id: "ap-" + oid, root: s.root}); await DB.put("apartados", {id: oid, at: ts.getTime(), rootName: s.root.name, acc: s.acc, items: log, deshecho: false}); }catch(e){}
+        }
+      }
+      d.querySelector("#apSt").innerHTML = `✅ ${num(okn)} archivo${okn === 1 ? "" : "s"} apartado${okn === 1 ? "" : "s"}.` + (errs.length ? `<div class="warn">${errs.slice(0, 8).map(esc).join("<br>")}${errs.length > 8 ? "<br>…" : ""}</div>` : "");
+      d.querySelector(".acts").innerHTML = '<button class="btn pri" data-x type="button">Cerrar</button>';
+      d.querySelector("[data-x]").onclick = () => d.close();
+      actualizarGuardadas();
+      refrescarRev();
+    };
+  }
+  async function verApartados(){
+    let A = []; try{ A = (await DB.all("apartados")).sort((a, b) => b.at - a.at); }catch(e){}
+    const d = dlg(`<h3>↩ Apartados</h3>${A.length ? A.map(o => `<div class="src"><div class="t"><b>${esc(o.rootName)}</b> · ${num(o.items.length)} archivos · ${fmtSize(o.items.reduce((a, x) => a + (x.size || 0), 0))}
+      <div class="xs mut">${new Date(o.at).toLocaleString("es-AR")} · ${o.deshecho ? "devueltos a su lugar" : "en _para_borrar"}</div></div>
+      ${o.deshecho ? "" : `<button class="btn xs" data-undo="${esc(o.id)}" type="button">↩ Deshacer</button>`}</div>`).join("") : '<p class="mut">No hay archivos apartados.</p>'}
+      <div class="status" id="unSt"></div><div class="acts"><button class="btn pri" data-x type="button">Cerrar</button></div>`);
+    d.querySelectorAll("[data-undo]").forEach(b => b.onclick = async () => {
+      const o = A.find(x => x.id === b.dataset.undo); if(!o) return;
+      b.disabled = true;
+      o.root = await raiz("ap-" + o.id);
+      if(!o.root){ st("#unSt", "⚠️ No se encontró el acceso a la carpeta. Mové los archivos a mano: el registro está en _para_borrar.", true); return; }
+      let p = "denied"; try{ p = await o.root.queryPermission({mode: "readwrite"}); if(p !== "granted") p = await o.root.requestPermission({mode: "readwrite"}); }catch(e){}
+      if(p !== "granted"){ st("#unSt", "⚠️ No se dio permiso para modificar la carpeta.", true); b.disabled = false; return; }
+      let ok = 0; const errs = [];
+      for(const x of o.items){
+        try{
+          const sp = x.rel.split("/"), sn = sp.pop();
+          const odir = await dirDe(o.root, sp, true);
+          if(await existe(odir, sn)){ errs.push(`${x.rel}: ya existe un archivo con ese nombre (no se tocó)`); continue; }
+          await mover(o.root, x.dest, x.rel); ok++;
+          for(const s of S.local) if(s.root && s.root.name === o.rootName) for(const it of s.items) if(it.rel === x.rel && it.apartado){ it.apartado = false; try{ const dp = x.rel.split("/"), n = dp.pop(); it.blob = await (await (await dirDe(o.root, dp, false)).getFileHandle(n)).getFile(); }catch(e){} }
+        }catch(e){ errs.push(`${x.rel}: ${e.message}`); }
+        st("#unSt", `Devolviendo ${ok} de ${o.items.length}…`);
+      }
+      o.deshecho = errs.length === 0 || ok === o.items.length; const o2 = Object.assign({}, o); delete o2.root; try{ await DB.put("apartados", o2); }catch(e){}
+      st("#unSt", `✅ ${num(ok)} devuelto${ok === 1 ? "" : "s"} a su lugar.` + (errs.length ? "<br>" + errs.slice(0, 6).map(esc).join("<br>") : ""), !!errs.length);
+      refrescarRev();
+    });
+  }
+
+  renderSaved();
   renderSources();
 })();
 </script>

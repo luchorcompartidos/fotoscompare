@@ -65,14 +65,37 @@ Otras funciones:
 - **CSV:** exporta la pestaña actual o el resultado completo.
 - **Miniaturas, filtros y búsqueda.**
 
+## Revisar respaldos (v0.1.0)
+
+Sirve para decidir **con control** qué hacer con lo que ya está en la nube. La app **nunca borra**:
+
+- **Nada viene marcado.** Se marca archivo por archivo, o "los visibles" del filtro actual, con confirmación.
+- **Solo se pueden marcar las copias exactas:** mismo tamaño y mismo nombre o fecha, o huella SHA-256 verificada.
+  - Si la copia de la nube pesa menos (recomprimida por "Ahorro de espacio"), queda bloqueado.
+  - También quedan bloqueadas las coincidencias Fuerte, Visual o Probable, y las fotos elegidas en vivo, que no traen tamaño.
+- **🛡️ Reglas de seguridad:** qué cuentas valen como respaldo, carpetas protegidas y "Exigir huella verificada".
+- **Avisos:** si el Takeout tiene más de 14 días o no se sabe su fecha.
+- **📦 Apartar** (PC con Chrome o Edge y carpeta elegida con "Elegir carpeta"): mueve los marcados a `_para_borrar` dentro de esa carpeta, manteniendo la estructura, y deja un `registro-….csv`. Con **⋯ → Apartados → Deshacer** vuelven a su lugar.
+- **Celular (web):** se revisa y se exporta el CSV.
+
+## Por carpeta (v0.1.0)
+
+Árbol de carpetas del dispositivo con lo que tiene copia exacta, copia no exacta o ningún respaldo. Muestra archivos, peso y porcentaje, y permite revisar o proteger cada carpeta.
+
+## Guardado e historial (v0.1.0)
+
+- Los índices (no las fotos) se guardan en el navegador (IndexedDB), así que se pueden volver a usar sin leer los .zip.
+- Las carpetas de la PC se reconectan y solo se releen los archivos que cambiaron. También se guardan las huellas visuales.
+- **⋯ → Historial** muestra cada comparación con sus totales.
+
 ## Próximas versiones (ideas)
 
 - Coincidencia visual para videos (por fotogramas).
 - Recuperar a una carpeta de la PC lo que está solo en la nube.
-- Guardar el índice para no releer el Takeout.
 - Leer el Takeout desde Google Drive con el núcleo de multigdrive.
 - APK y .exe.
-- Alta en Mi Panel y en la caja de apps.
+
+Notas técnicas para seguir el desarrollo: [`DESARROLLO.md`](DESARROLLO.md).
 
 ## Versiones
 
