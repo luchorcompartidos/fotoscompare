@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="app-version" content="v0.1.0">
+<meta name="app-version" content="v0.1.1">
 <meta name="theme-color" content="#1d4ed8">
 <meta name="color-scheme" content="light dark">
 <script>try{var t=(JSON.parse(localStorage.getItem("fotoscompare_v1")||"{}").tema)||"sistema";document.documentElement.dataset.tema=(t==="oscuro"||(t==="sistema"&&matchMedia("(prefers-color-scheme: dark)").matches))?"dark":"light";}catch(e){}</script>
@@ -135,13 +135,14 @@
       <div class="sm mut">Podés sumar varias cuentas y combinar las dos formas.</div>
       <div class="sub">
         <h3>📦 Takeout: la biblioteca completa</h3>
-        <div class="sm mut">Elegí <b>todas las partes</b> del export juntas (los .zip), o la carpeta ya descomprimida.</div>
+        <div class="sm mut">Elegí <b>todas las partes</b> del export juntas (los .zip), o la carpeta ya descomprimida. Si Takeout las dejó en tu Drive, elegilas desde ahí: no hace falta descargarlas.</div>
         <div class="row" style="margin-top:8px">
           <input type="text" id="tkAcc" placeholder="Cuenta (ej. personal@gmail.com)" style="flex:1;min-width:180px">
         </div>
         <div class="row" style="margin-top:8px">
           <button class="btn" id="tkZipBtn" type="button">📦 Elegir los .zip</button>
           <button class="btn" id="tkDirBtn" type="button">📁 Elegir carpeta descomprimida</button>
+          <button class="btn" id="tkDrvBtn" type="button">☁️ Elegir los .zip en Drive</button>
           <input type="file" id="tkZip" accept=".zip,application/zip" multiple class="hide">
           <input type="file" id="tkDir" webkitdirectory directory multiple class="hide">
         </div>
@@ -286,11 +287,12 @@ const FC = (() => {
         x += 4 + sz;
       }
       p = xend + clen;
-      if(!name.endsWith("/")) out.push({path: name, size: usize, csize, method, lho, zip: file});
+      if(!name.endsWith("/")) out.push({path: name, size: usize, csize, method, lho, nlen, xlen, zip: file});
     }
     return out;
   }
   async function zipBlob(ent){
+    if(ent.zip.remote) return zipBlobRemote(ent);
     const h = new DataView(await ent.zip.slice(ent.lho, ent.lho + 30).arrayBuffer());
     if(h.getUint32(0, true) !== 0x04034b50) throw new Error("Entrada del ZIP dañada.");
     const off = ent.lho + 30 + h.getUint16(26, true) + h.getUint16(28, true);
@@ -298,6 +300,52 @@ const FC = (() => {
     if(ent.method === 0) return raw;
     if(ent.method === 8) return await new Response(raw.stream().pipeThrough(new DecompressionStream("deflate-raw"))).blob();
     throw new Error("Compresión no soportada (" + ent.method + ").");
+  }
+  // ZIP remoto (Drive): encabezado local y datos en un solo pedido por tramo (Range)
+  async function zipBlobRemote(ent){
+    const z = ent.zip, guess = 30 + (ent.nlen || 0) + (ent.xlen || 0) + 256;
+    let end = Math.min(z.size, ent.lho + guess + ent.csize);
+    let buf = await z.read(ent.lho, end);
+    const h = new DataView(buf);
+    if(h.byteLength < 30 || h.getUint32(0, true) !== 0x04034b50) throw new Error("Entrada del ZIP dañada.");
+    const skip = 30 + h.getUint16(26, true) + h.getUint16(28, true);
+    let data;
+    if(skip + ent.csize <= buf.byteLength) data = buf.slice(skip, skip + ent.csize);
+    else data = await z.read(ent.lho + skip, ent.lho + skip + ent.csize);
+    const raw = new Blob([data]);
+    if(ent.method === 0) return raw;
+    if(ent.method === 8) return await new Response(raw.stream().pipeThrough(new DecompressionStream("deflate-raw"))).blob();
+    throw new Error("Compresión no soportada (" + ent.method + ").");
+  }
+  // Archivo de Google Drive que se comporta como un Blob para el lector de ZIP: lee solo los tramos pedidos.
+  // meta: {id, name, size, modifiedTime}; token(): devuelve el token de acceso vigente.
+  function driveFile(meta, token, fetchFn){
+    const F = fetchFn || ((...a) => fetch(...a));
+    const size = +meta.size || 0;
+    const f = {remote: true, id: meta.id, name: meta.name, size, lastModified: meta.modifiedTime ? Date.parse(meta.modifiedTime) : 0, bytes: 0, pedidos: 0,
+      async read(a, b){
+        if(b <= a) return new ArrayBuffer(0);
+        const url = "https://www.googleapis.com/drive/v3/files/" + encodeURIComponent(meta.id) + "?alt=media";
+        for(let i = 0; ; i++){
+          let r;
+          try{ r = await F(url, {headers: {Authorization: "Bearer " + token(), Range: "bytes=" + a + "-" + (b - 1)}}); }
+          catch(err){ if(i < 3){ await new Promise(ok => setTimeout(ok, 500 * 2 ** i)); continue; } throw new Error("Sin conexión con Google Drive."); }
+          if(r.status === 401) throw new Error("El acceso a Drive venció (dura una hora). Volvé a elegir los .zip desde Drive.");
+          if(r.status === 403 || r.status === 404){ const j = await r.json().catch(() => ({})); throw new Error((j.error && j.error.message) || "Drive no dejó leer " + meta.name + "."); }
+          if((r.status === 429 || r.status >= 500) && i < 3){ await new Promise(ok => setTimeout(ok, 800 * 2 ** i)); continue; }
+          if(r.status !== 206 && r.status !== 200) throw new Error("Drive respondió " + r.status + " al leer " + meta.name + ".");
+          let ab = await r.arrayBuffer();
+          if(r.status === 200 && ab.byteLength > b - a) ab = ab.slice(a, b); // el servidor ignoró el tramo
+          f.bytes += ab.byteLength; f.pedidos++;
+          return ab;
+        }
+      },
+      slice(a, b){
+        a = a == null ? 0 : a < 0 ? Math.max(0, size + a) : Math.min(a, size);
+        b = b == null ? size : b < 0 ? Math.max(0, size + b) : Math.min(b, size);
+        return {size: Math.max(0, b - a), arrayBuffer: () => f.read(a, b)};
+      }};
+    return f;
   }
   // Interfaz común para entradas de ZIP y archivos de carpeta
   const entBlob = ent => ent.zip ? zipBlob(ent) : Promise.resolve(ent.file);
@@ -569,7 +617,7 @@ const FC = (() => {
         done++; if(onProg && done % 200 === 0) onProg(done, jsons.length);
       }
     }
-    await Promise.all(Array.from({length: 8}, worker));
+    await Promise.all(Array.from({length: jsons.some(e => e.zip && e.zip.remote) ? 16 : 8}, worker));
     if(onProg) onProg(jsons.length, jsons.length);
     const items = [];
     for(const [d, v] of byDir){
@@ -833,7 +881,7 @@ const FC = (() => {
     return out.sort((a, b) => b.libera - a.libera || b.items.length - a.items.length);
   }
 
-  return {zipEntries, zipBlob, entBlob, entSliceable, readTakeout, localMeta, dateFromName, compare, normName, timeRel, kindOf, ext, baseName, dirName, LV, LV_TXT, jsonKey, mediaKey, T_TXT, canVis, vhash, hamming, visPairs, dupes};
+  return {zipEntries, zipBlob, driveFile, entBlob, entSliceable, readTakeout, localMeta, dateFromName, compare, normName, timeRel, kindOf, ext, baseName, dirName, LV, LV_TXT, jsonKey, mediaKey, T_TXT, canVis, vhash, hamming, visPairs, dupes};
 })();
 if(typeof module !== "undefined") module.exports = FC;
 
@@ -847,7 +895,7 @@ if(typeof module !== "undefined") module.exports = FC;
   const CLIENT_ID_DEF = "414410842048-ac53pi41embhn1k8e004dnr99m20fqao.apps.googleusercontent.com"; // mismo proyecto que multigdrive
   const SCOPES = "https://www.googleapis.com/auth/photospicker.mediaitems.readonly https://www.googleapis.com/auth/userinfo.email";
   const PK = "https://photospicker.googleapis.com/v1/";
-  let cfg = {tema: "sistema", tol: 2, huso: true, prob: true, clientId: "", visThr: 8, guardar: true, cuentasNo: [], protegidas: [], exigirHuella: false};
+  let cfg = {tema: "sistema", tol: 2, huso: true, prob: true, clientId: "", apiKey: "", visThr: 8, guardar: true, cuentasNo: [], protegidas: [], exigirHuella: false};
   try{ Object.assign(cfg, JSON.parse(localStorage.getItem(KEY) || "{}")); }catch(e){}
   const saveCfg = () => { try{ localStorage.setItem(KEY, JSON.stringify(cfg)); }catch(e){} };
   const clientId = () => (cfg.clientId || "").trim() || CLIENT_ID_DEF;
@@ -904,9 +952,11 @@ if(typeof module !== "undefined") module.exports = FC;
   // ---------- Takeout ----------
   $("#tkZipBtn").onclick = () => $("#tkZip").click();
   $("#tkDirBtn").onclick = () => $("#tkDir").click();
-  $("#tkZip").onchange = async e => {
+  $("#tkZip").onchange = e => {
     const files = [...e.target.files]; e.target.value = ""; if(!files.length) return;
-    const acc = $("#tkAcc").value.trim() || nextAcc("c");
+    leerZips(files, $("#tkAcc").value.trim() || nextAcc("c"), files.length + " .zip");
+  };
+  async function leerZips(files, acc, how){
     try{
       st("#tkSt", `Leyendo el índice de ${files.length} archivo${files.length > 1 ? "s" : ""} .zip…`); prog("#tkProg", 0, 1);
       let ents = [];
@@ -917,7 +967,71 @@ if(typeof module !== "undefined") module.exports = FC;
       }
       const fz = files.map(f => (f.name.match(/takeout-(\d{4})(\d{2})(\d{2})T/i) || [])).find(m => m[1]);
       const fecha = fz ? new Date(+fz[1], +fz[2] - 1, +fz[3]).getTime() : Math.min(...files.map(f => f.lastModified || Date.now()));
-      await addTakeout(ents, acc, files.length + " .zip", fecha);
+      await addTakeout(ents, acc, how, fecha);
+      const rem = files.filter(f => f.remote);
+      if(rem.length){ const mb = rem.reduce((a, f) => a + f.bytes, 0) / 1048576, tot = rem.reduce((a, f) => a + f.size, 0) / 1048576;
+        $("#tkSt").insertAdjacentHTML("beforeend", ` <span class="mut">Desde Drive se leyeron ${mb < 10 ? mb.toFixed(1) : num(Math.round(mb))} MB de ${num(Math.round(tot))} MB.</span>`); }
+    }catch(err){ prog("#tkProg"); st("#tkSt", "⚠️ " + esc(err.message), true); }
+  }
+
+  // ---------- Takeout desde Google Drive (selector de Google, permiso drive.file) ----------
+  // La app solo ve los archivos que elegís en el selector. Los .zip se leen por tramos: índice y .json, no las fotos.
+  const DRV_SCOPE = "https://www.googleapis.com/auth/drive.file";
+  const PROJECT_NUM = () => clientId().split("-")[0];
+  let gapiP = null, drvTok = null;
+  function loadPicker(){
+    if(window.google && google.picker) return Promise.resolve();
+    if(!gapiP) gapiP = new Promise((res, rej) => {
+      const fin = () => gapi.load("picker", {callback: res, onerror: () => { gapiP = null; rej(new Error("No se pudo cargar el selector de Google.")); }});
+      if(window.gapi) return fin();
+      const s = document.createElement("script"); s.src = "https://apis.google.com/js/api.js"; s.async = true; s.onload = fin;
+      s.onerror = () => { gapiP = null; rej(new Error("No se pudo cargar el selector de Google. Revisá la conexión.")); }; document.head.appendChild(s);
+    });
+    return gapiP;
+  }
+  function getDriveToken(){
+    if(drvTok && drvTok.exp > Date.now() + 120000) return Promise.resolve(drvTok);
+    return new Promise((res, rej) => {
+      const tc = google.accounts.oauth2.initTokenClient({client_id: clientId(), scope: DRV_SCOPE,
+        callback: r => r.error ? rej(new Error(r.error_description || r.error)) : res(drvTok = {t: r.access_token, exp: Date.now() + (+r.expires_in || 3600) * 1000}),
+        error_callback: e => rej(new Error(e.type === "popup_closed" ? "Se cerró la ventana de Google sin conectar." : e.type === "popup_failed_to_open" ? "El navegador bloqueó la ventana de Google: permití las ventanas emergentes para esta página." : (e.message || e.type)))});
+      tc.requestAccessToken({prompt: drvTok ? "" : "select_account"});
+    });
+  }
+  function elegirEnDrive(tok){
+    return new Promise((res, rej) => {
+      const P = google.picker;
+      const vista = new P.DocsView(P.ViewId.DOCS).setMimeTypes("application/zip,application/x-zip-compressed,application/x-zip").setIncludeFolders(true).setMode(P.DocsViewMode.LIST);
+      const pk = new P.PickerBuilder().setOAuthToken(tok).setDeveloperKey(cfg.apiKey.trim()).setAppId(PROJECT_NUM()).addView(vista)
+        .enableFeature(P.Feature.MULTISELECT_ENABLED).setLocale("es-419").setTitle("Elegí todas las partes del Takeout (.zip)")
+        .setCallback(d => { if(d.action === P.Action.PICKED) res(d.docs || []); else if(d.action === P.Action.CANCEL) res([]); }).build();
+      pk.setVisible(true);
+    });
+  }
+  async function driveMeta(tok, id){
+    const r = await fetch("https://www.googleapis.com/drive/v3/files/" + encodeURIComponent(id) + "?fields=id,name,size,modifiedTime,mimeType&supportsAllDrives=true", {headers: {Authorization: "Bearer " + tok}});
+    const j = await r.json().catch(() => ({}));
+    if(!r.ok){
+      const m = (j.error && j.error.message) || ("Error " + r.status);
+      if(/has not been used|is disabled|SERVICE_DISABLED/i.test(m)) throw new Error('La "Google Drive API" no está habilitada en el proyecto de Google Cloud. Mirá Ayuda → Takeout desde Drive.');
+      throw new Error(m);
+    }
+    return j;
+  }
+  $("#tkDrvBtn").onclick = async () => {
+    if(!cfg.apiKey.trim()){ st("#tkSt", '⚠️ Para elegir desde Drive falta la <b>clave de API</b> del selector de Google: cargala en el menú → 🔑 Configurar acceso a Google. Cómo crearla: Ayuda → Takeout desde Drive.', true); return; }
+    const acc = $("#tkAcc").value.trim();
+    try{
+      st("#tkSt", "Conectando con Google Drive…");
+      await Promise.all([loadGis(), loadPicker()]);
+      const tk = await getDriveToken();
+      const docs = await elegirEnDrive(tk.t);
+      if(!docs.length){ st("#tkSt", ""); return; }
+      const metas = await Promise.all(docs.map(d => driveMeta(tk.t, d.id)));
+      const malos = metas.filter(m => !/\.zip$/i.test(m.name || ""));
+      if(malos.length) throw new Error("Esto no es un .zip: " + malos.map(m => m.name).join(", "));
+      const files = metas.map(m => FC.driveFile(m, () => drvTok.t));
+      await leerZips(files, acc || nextAcc("c"), files.length + " .zip en Drive");
     }catch(err){ prog("#tkProg"); st("#tkSt", "⚠️ " + esc(err.message), true); }
   };
   $("#tkDir").onchange = async e => {
@@ -1514,8 +1628,10 @@ if(typeof module !== "undefined") module.exports = FC;
   function confGoogle(){
     const d = dlg(`<h3>Acceso a Google</h3><p class="sm">La app usa el ID de cliente OAuth del proyecto de Google Cloud de <b>multigdrive</b>. Si creaste otro, pegalo acá (vacío = el de siempre).</p>
       <input type="text" id="cidIn" style="width:100%" value="${esc(cfg.clientId)}" placeholder="${esc(CLIENT_ID_DEF)}">
+      <p class="sm" style="margin-top:12px"><b>Clave de API</b> para elegir los .zip de Takeout en Drive (selector de Google). Cómo crearla: Ayuda → Takeout desde Drive.</p>
+      <input type="text" id="akIn" style="width:100%" value="${esc(cfg.apiKey)}" placeholder="AIza…">
       <div class="acts"><button class="btn" data-x type="button">Cancelar</button><button class="btn pri" id="cidOk" type="button">Guardar</button></div>`);
-    d.querySelector("#cidOk").onclick = () => { cfg.clientId = d.querySelector("#cidIn").value.trim(); saveCfg(); d.close(); toast("Guardado."); };
+    d.querySelector("#cidOk").onclick = () => { cfg.clientId = d.querySelector("#cidIn").value.trim(); cfg.apiKey = d.querySelector("#akIn").value.trim(); saveCfg(); d.close(); toast("Guardado."); };
   }
   function ayuda(){
     dlg(`<h3>Ayuda</h3><div class="help sm">
@@ -1525,6 +1641,13 @@ if(typeof module !== "undefined") module.exports = FC;
       <li>Formato <b>.zip</b>. Elegí el tamaño más grande que te convenga: si sale en varias partes, en la app elegí <b>todas juntas</b>.</li>
       <li>Cuando llegue el mail, descargá los .zip. No hace falta descomprimirlos: la app los lee directo.</li></ol>
       <p class="mut">Takeout es una copia del momento en que lo pediste: lo que subas después no aparece hasta el próximo. Takeout no incluye la "Carpeta bloqueada" de Google Fotos.</p>
+      <h4>Takeout desde Drive</h4>
+      <p>En Takeout, en "Método de entrega", elegí <b>Agregar a Drive</b>. Después tocá <b>☁️ Elegir los .zip en Drive</b> y seleccioná todas las partes (están en la carpeta "Takeout"). La app solo ve los archivos que elegís y lee el índice y los datos de cada foto, no las fotos enteras: de varios GB baja unos pocos MB.</p>
+      <p><b>Configuración inicial, una sola vez</b>, en el mismo proyecto de Google Cloud:</p>
+      <ol><li><b>APIs y servicios → Biblioteca</b>: habilitá <b>Google Picker API</b> (y <b>Google Drive API</b>, si no está).</li>
+      <li><b>Credenciales → Crear credenciales → Clave de API</b>. Restringila: <b>Sitios web</b> = <code>https://luchorcompartidos.github.io/*</code>, y en <b>Restricciones de API</b> elegí Google Picker API. Copiala y pegala en el menú → 🔑 Configurar acceso a Google.</li>
+      <li><b>Pantalla de consentimiento / Acceso a los datos</b>: agregá el permiso <code>…/auth/drive.file</code>.</li></ol>
+      <p class="mut">El acceso dura una hora: si después querés ver miniaturas o verificar huellas de un Takeout de Drive, puede pedirte volver a elegir los .zip.</p>
       <h4>2. Nube: conectar la cuenta (fotos que elijas)</h4>
       <p>Desde 2025 Google no deja que otras apps lean toda la biblioteca. Con esta opción se abre Google Fotos, elegís qué comparar (hasta 2000 por vez) y tocás <b>Listo</b>.</p>
       <p><b>Configuración inicial, una sola vez</b>, en el proyecto de Google Cloud de multigdrive (<a href="https://console.cloud.google.com" target="_blank" rel="noopener">console.cloud.google.com</a>):</p>
