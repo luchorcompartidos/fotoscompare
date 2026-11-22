@@ -32,7 +32,7 @@ Usa el ID de cliente web del proyecto de Google Cloud de `multigdrive`. Se puede
 - **Celular:** "Elegir archivos" (abre la galería).
 
 De cada archivo se lee:
-- la fecha EXIF y las dimensiones (JPEG y PNG);
+- la fecha EXIF y las dimensiones (JPEG, PNG, HEIC/HEIF y AVIF);
 - la fecha y las dimensiones de los videos (MP4, MOV, 3GP);
 - si no hay fecha interna, la que figura en el nombre (`IMG_20231105_143000`, `PXL_…`, `Screenshot_…`, `WhatsApp Image … at …`);
 - como último recurso, la fecha del archivo, que es menos confiable.
@@ -44,6 +44,7 @@ De cada archivo se lee:
 | Exacto | mismo nombre y mismo tamaño |
 | Idéntico (otro nombre) | mismo tamaño y misma fecha y hora |
 | Fuerte | mismo nombre (o la misma foto con otra extensión) y misma fecha y hora, o mismo nombre y mismas dimensiones |
+| Visual (misma imagen) | se ve igual según la huella visual (después de usar 🧠) |
 | Probable | coinciden algunos datos, pero falta alguno para confirmar |
 | Dudoso | mismo nombre con fecha distinta, o misma hora con otro nombre |
 
@@ -54,12 +55,20 @@ Opciones:
 
 Otras funciones:
 - **🔎 Verificar huella:** compara con SHA-256 el archivo local y el del Takeout.
+- **🧠 Coincidencias visuales (v0.0.2):** analiza las fotos que quedaron sin pareja o dudosas con una huella visual (dHash de 64 bits). Encuentra la misma foto aunque Google la haya recomprimido, esté renombrada o no tenga fecha.
+  - Usa la miniatura interna del JPEG cuando existe, con la orientación EXIF y el recorte de las barras negras. Si no hay miniatura, decodifica la imagen reducida.
+  - Sensibilidad: estricta (4), normal (8) o amplia (12) bits de diferencia. Si las fechas no coinciden para nada, la pareja queda como Dudosa.
+  - No cubre HEIC ni RAW (el navegador no los puede mostrar) ni videos.
+- **🧬 Duplicados (v0.0.2):** grupos de copias dentro del dispositivo y dentro de la nube (por ejemplo, entre cuentas).
+  - Son idénticos si coincide el tamaño y además el nombre o la fecha y hora; después de 🧠 también se suman los visuales.
+  - Muestra cuánto espacio se liberaría y se exporta a CSV.
 - **CSV:** exporta la pestaña actual o el resultado completo.
 - **Miniaturas, filtros y búsqueda.**
 
 ## Próximas versiones (ideas)
 
-- Coincidencia visual (hash perceptual) para fotos recomprimidas o con otro nombre.
+- Coincidencia visual para videos (por fotogramas).
+- Recuperar a una carpeta de la PC lo que está solo en la nube.
 - Guardar el índice para no releer el Takeout.
 - Leer el Takeout desde Google Drive con el núcleo de multigdrive.
 - APK y .exe.

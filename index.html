@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="app-version" content="v0.0.1">
+<meta name="app-version" content="v0.0.2">
 <meta name="theme-color" content="#1d4ed8">
 <meta name="color-scheme" content="light dark">
 <script>try{var t=(JSON.parse(localStorage.getItem("fotoscompare_v1")||"{}").tema)||"sistema";document.documentElement.dataset.tema=(t==="oscuro"||(t==="sistema"&&matchMedia("(prefers-color-scheme: dark)").matches))?"dark":"light";}catch(e){}</script>
@@ -45,6 +45,12 @@
   .b-fuerte{background:var(--ac2);color:var(--ac)}
   .b-probable{background:var(--midb);color:var(--mid)}
   .b-dudoso{background:var(--badb);color:var(--bad)}
+  .b-visual{background:#f3e8ff;color:#7e22ce}
+  html[data-tema=dark] .b-visual{background:#2e1a47;color:#d8b4fe}
+  .vis{border:1px dashed var(--bd2);border-radius:12px;padding:10px 12px;margin:4px 0 10px}
+  .grp{border:1px solid var(--bd);border-radius:12px;padding:8px;background:var(--bg)}
+  .grp .gh{font-size:13px;margin:2px 4px 8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .grp .list{gap:4px}
   .prog{height:6px;background:var(--chip);border-radius:9px;overflow:hidden;margin-top:8px}
   .prog i{display:block;height:100%;width:0;background:var(--ac);transition:width .2s}
   .status{font-size:13px;color:var(--mut);margin-top:6px;min-height:18px}
@@ -175,12 +181,23 @@
       <button class="btn xs" id="csvTab" type="button">⬇ CSV de esta pestaña</button>
       <button class="btn xs" id="csvAll" type="button">⬇ CSV completo</button></div>
     <div class="tiles" id="tiles"></div>
+    <div class="vis">
+      <div class="row">
+        <button class="btn" id="visBtn" type="button">🧠 Buscar coincidencias visuales</button>
+        <label class="chk">Sensibilidad <select id="visSens"><option value="4">Estricta</option><option value="8">Normal</option><option value="12">Amplia</option></select></label>
+        <button class="btn xs hide" id="visStop" type="button">Detener</button>
+      </div>
+      <div class="xs mut" style="margin-top:4px">Compara cómo se ven las fotos que quedaron sin pareja (recomprimidas, renombradas o sin fecha). También suma duplicados visuales.</div>
+      <div class="prog hide" id="visProg"><i></i></div>
+      <div class="status" id="visSt"></div>
+    </div>
     <div class="tabs" id="tabs"></div>
     <div class="row" style="margin-bottom:10px">
       <input type="text" id="fQ" placeholder="Buscar por nombre o carpeta" style="flex:1;min-width:160px">
       <select id="fKind"><option value="">Fotos y videos</option><option value="foto">Solo fotos</option><option value="video">Solo videos</option></select>
       <select id="fSrc"><option value="">Todas las fuentes</option></select>
-      <select id="fLv"><option value="">Todos los niveles</option><option value="exacto">Exacto</option><option value="identico">Idéntico (otro nombre)</option><option value="fuerte">Fuerte</option><option value="probable">Probable</option><option value="dudoso">Dudoso</option></select>
+      <select id="fDup" class="hide"><option value="">Dispositivo y nube</option><option value="local">Solo en el dispositivo</option><option value="nube">Solo en la nube</option></select>
+      <select id="fLv"><option value="">Todos los niveles</option><option value="exacto">Exacto</option><option value="identico">Idéntico (otro nombre)</option><option value="fuerte">Fuerte</option><option value="visual">Visual (misma imagen)</option><option value="probable">Probable</option><option value="dudoso">Dudoso</option></select>
     </div>
     <div class="list" id="list"></div>
     <div class="more" id="more"></div>
@@ -281,39 +298,44 @@ const FC = (() => {
   // ---------- Metadatos locales: JPEG (EXIF + tamaño), PNG, MP4/MOV ----------
   async function readAt(blob, off, len){ return new DataView(await blob.slice(off, off + len).arrayBuffer()); }
 
-  function exifDate(dv, start, len){
-    // dv: TIFF dentro del APP1. Devuelve {t, prec, kind} o null
-    const T = start;
-    if(T + 8 > dv.byteLength) return null;
-    const le = dv.getUint16(T) === 0x4949;
+  function exifInfo(dv, start, len){
+    // dv: datos que contienen el TIFF del EXIF, que empieza en "start". Devuelve {date, orient, thumb}
+    const T = start, r = {};
+    if(T < 0 || T + 8 > dv.byteLength) return r;
+    const bo = dv.getUint16(T); if(bo !== 0x4949 && bo !== 0x4D4D) return r;
+    const le = bo === 0x4949, lim = Math.min(dv.byteLength, start + Math.max(len, 8));
+    const ok = o => T + o >= 0 && T + o + 1 < lim;
     const u16 = o => dv.getUint16(T + o, le), u32 = o => dv.getUint32(T + o, le);
-    const ok = o => T + o >= 0 && T + o < Math.min(dv.byteLength, start + len);
     const str = (o, n) => { let s = ""; for(let i = 0; i < n && ok(o + i); i++){ const c = dv.getUint8(T + o + i); if(!c) break; s += String.fromCharCode(c); } return s; };
     function tags(ifd){
-      const r = {}; if(!ok(ifd + 2)) return r;
+      const m = {}; let next = 0;
+      if(!ifd || !ok(ifd + 2)) return {m, next};
       const n = u16(ifd);
       for(let i = 0; i < n; i++){
         const e = ifd + 2 + i * 12; if(!ok(e + 12)) break;
         const tag = u16(e), type = u16(e + 2), cnt = u32(e + 4);
-        if(type === 2){ const off = cnt > 4 ? u32(e + 8) : e + 8; r[tag] = str(off, cnt); }
-        else if(type === 4 || type === 3) r[tag] = type === 3 ? u16(e + 8) : u32(e + 8);
+        if(type === 2){ const off = cnt > 4 ? u32(e + 8) : e + 8; m[tag] = str(off, cnt); }
+        else if(type === 3) m[tag] = u16(e + 8);
+        else if(type === 4) m[tag] = u32(e + 8);
       }
-      return r;
+      const nx = ifd + 2 + n * 12; if(ok(nx + 4)) next = u32(nx);
+      return {m, next};
     }
     try{
-      const t0 = tags(u32(4));
-      let sub = {};
-      if(t0[0x8769]) sub = tags(t0[0x8769]);
-      const d = sub[0x9003] || sub[0x9004] || t0[0x0132];
-      if(!d) return null;
-      const m = d.match(/^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
-      if(!m || m[1] === "0000") return null;
-      const [Y, M, D, h, mi, s] = m.slice(1).map(Number);
-      const off = sub[0x9011] || sub[0x9012] || "";
-      const o = off.match(/^([+-])(\d{2}):(\d{2})/);
-      if(o){ const mins = (o[1] === "-" ? -1 : 1) * (+o[2] * 60 + +o[3]); return {t: Date.UTC(Y, M - 1, D, h, mi, s) - mins * 60000, prec: "seg", kind: "exif", utc: true}; }
-      return {t: new Date(Y, M - 1, D, h, mi, s).getTime(), prec: "seg", kind: "exif"};
-    }catch(e){ return null; }
+      const i0 = tags(u32(4));
+      const sub = i0.m[0x8769] ? tags(i0.m[0x8769]).m : {};
+      r.orient = i0.m[0x0112] || 1;
+      if(i0.next){ const i1 = tags(i0.next).m; if(i1[0x0201] && i1[0x0202]) r.thumb = {off: i1[0x0201], len: i1[0x0202]}; }
+      const d = sub[0x9003] || sub[0x9004] || i0.m[0x0132];
+      const m = d && d.match(/^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+      if(m && m[1] !== "0000"){
+        const [Y, M, D, h, mi, s] = m.slice(1).map(Number);
+        const o = String(sub[0x9011] || sub[0x9012] || "").match(/^([+-])(\d{2}):(\d{2})/);
+        if(o){ const mins = (o[1] === "-" ? -1 : 1) * (+o[2] * 60 + +o[3]); r.date = {t: Date.UTC(Y, M - 1, D, h, mi, s) - mins * 60000, prec: "seg", kind: "exif", utc: true}; }
+        else r.date = {t: new Date(Y, M - 1, D, h, mi, s).getTime(), prec: "seg", kind: "exif"};
+      }
+    }catch(e){}
+    return r;
   }
 
   async function jpegMeta(blob){
@@ -328,17 +350,22 @@ const FC = (() => {
       const mk = buf.getUint8(at + 1);
       if(mk === 0xD9 || mk === 0xDA) break;
       const len = buf.getUint16(at + 2);
-      if(mk === 0xE1 && !r.date){
+      if(mk === 0xE1 && r.date === undefined){
         let seg = buf, sb = base;
         if(pos + 2 + len > base + buf.byteLength){ seg = await readAt(blob, pos, len + 2); sb = pos; }
         const s = pos - sb + 4;
-        if(seg.byteLength >= s + 6 && seg.getUint32(s) === 0x45786966) r.date = exifDate(seg, s + 6, len - 8);
+        if(seg.byteLength >= s + 6 && seg.getUint32(s) === 0x45786966){
+          const x = exifInfo(seg, s + 6, len - 8);
+          r.date = x.date || null; r.orient = x.orient || 1;
+          if(x.thumb && pos + 10 + x.thumb.off + x.thumb.len <= blob.size) r.thumb = {o: pos + 10 + x.thumb.off, n: x.thumb.len};
+        }
       }
       if(mk >= 0xC0 && mk <= 0xCF && mk !== 0xC4 && mk !== 0xC8 && mk !== 0xCC){
         let seg = buf, sb = base;
         if(pos + 9 > base + buf.byteLength){ seg = await readAt(blob, pos, 16); sb = pos; }
         const s = pos - sb;
         r.h = seg.getUint16(s + 5); r.w = seg.getUint16(s + 7);
+        if(r.orient >= 5 && r.orient <= 8){ const w = r.w; r.w = r.h; r.h = w; }
         break;
       }
       pos += 2 + len;
@@ -385,11 +412,87 @@ const FC = (() => {
     walk(8, m.byteLength, 0);
     return r;
   }
+  // HEIC/HEIF/AVIF (ISOBMFF): dimensiones (ispe + irot) y EXIF del ítem "Exif"
+  async function heifMeta(blob){
+    const size = blob.size; let pos = 0, meta = null;
+    for(let g = 0; g < 40 && pos + 8 <= size; g++){
+      const h = await readAt(blob, pos, 16);
+      let len = h.getUint32(0); const typ = String.fromCharCode(h.getUint8(4), h.getUint8(5), h.getUint8(6), h.getUint8(7));
+      if(len === 1) len = Number(h.getBigUint64(8)); else if(len === 0) len = size - pos;
+      if(len < 8) break;
+      if(typ === "meta"){ meta = {pos, len}; break; }
+      pos += len;
+    }
+    if(!meta || meta.len > 8 * 1048576) return {};
+    const m = await readAt(blob, meta.pos, meta.len), E = m.byteLength;
+    const cc = p => String.fromCharCode(m.getUint8(p), m.getUint8(p + 1), m.getUint8(p + 2), m.getUint8(p + 3));
+    let pitm = 0, exifId = 0; const items = {}, props = [null], assoc = {};
+    const kids = (s, e, fn) => { let p = s; while(p + 8 <= e){ const len = m.getUint32(p); if(len < 8 || p + len > e) break; fn(cc(p + 4), p, len); p += len; } };
+    kids(12, E, (t, p, len) => {
+      const v = m.getUint8(p + 8);
+      if(t === "pitm") pitm = v === 0 ? m.getUint16(p + 12) : m.getUint32(p + 12);
+      else if(t === "iinf"){
+        let q = p + 12; const n = v === 0 ? m.getUint16(q) : m.getUint32(q); q += v === 0 ? 2 : 4;
+        for(let i = 0; i < n && q + 8 <= p + len; i++){
+          const l = m.getUint32(q), vi = m.getUint8(q + 8);
+          if(vi >= 2){ const id = vi === 2 ? m.getUint16(q + 12) : m.getUint32(q + 12); const tp = cc(q + 12 + (vi === 2 ? 2 : 4) + 2); if(tp === "Exif") exifId = id; }
+          if(l < 8) break; q += l;
+        }
+      } else if(t === "iloc"){
+        let q = p + 12;
+        const rd = n => { let x = 0; if(n === 2) x = m.getUint16(q); else if(n === 4) x = m.getUint32(q); else if(n === 8) x = Number(m.getBigUint64(q)); q += n; return x; };
+        const b1 = m.getUint8(q), b2 = m.getUint8(q + 1); q += 2;
+        const os = b1 >> 4, ls = b1 & 15, bs = b2 >> 4, is = (v === 1 || v === 2) ? b2 & 15 : 0;
+        const n = v < 2 ? rd(2) : rd(4);
+        for(let i = 0; i < n && q < p + len; i++){
+          const id = v < 2 ? rd(2) : rd(4); let cm = 0;
+          if(v === 1 || v === 2) cm = rd(2) & 15;
+          rd(2); const base = rd(bs), ec = rd(2), ex = [];
+          for(let k = 0; k < ec; k++){ if(is) rd(is); const o = rd(os), l = rd(ls); ex.push({o, l}); }
+          items[id] = {cm, base, ex};
+        }
+      } else if(t === "iprp"){
+        kids(p + 8, p + len, (t2, p2, len2) => {
+          if(t2 === "ipco") kids(p2 + 8, p2 + len2, (t3, p3) => props.push({t: t3, p: p3}));
+          else if(t2 === "ipma"){
+            const v2 = m.getUint8(p2 + 8), fl = m.getUint32(p2 + 8) & 0xFFFFFF; let q = p2 + 12; const n = m.getUint32(q); q += 4;
+            for(let i = 0; i < n && q < p2 + len2; i++){
+              const id = v2 < 1 ? m.getUint16(q) : m.getUint32(q); q += v2 < 1 ? 2 : 4;
+              const c = m.getUint8(q++), a = [];
+              for(let k = 0; k < c; k++){ if(fl & 1){ a.push(m.getUint16(q) & 0x7FFF); q += 2; } else a.push(m.getUint8(q++) & 0x7F); }
+              assoc[id] = a;
+            }
+          }
+        });
+      }
+    });
+    const r = {};
+    let rot = 0;
+    for(const ix of (assoc[pitm] || [])){
+      const pr = props[ix]; if(!pr) continue;
+      if(pr.t === "ispe" && !r.w){ r.w = m.getUint32(pr.p + 12); r.h = m.getUint32(pr.p + 16); }
+      if(pr.t === "irot") rot = m.getUint8(pr.p + 8) & 3;
+    }
+    if(r.w && (rot === 1 || rot === 3)){ const w = r.w; r.w = r.h; r.h = w; }
+    const loc = items[exifId];
+    if(loc && loc.cm === 0 && loc.ex.length){
+      const off = loc.base + loc.ex[0].o, len = Math.min(loc.ex[0].l || 65536, 262144);
+      const d = await readAt(blob, off, len);
+      if(d.byteLength > 8){
+        const start = 4 + d.getUint32(0);
+        const x = exifInfo(d, start, d.byteLength - start);
+        if(x.date) r.date = x.date;
+      }
+    }
+    return r;
+  }
+
   async function localMeta(blob, name){
     const e = ext(name);
     try{
       if(e === "jpg" || e === "jpeg" || e === "jpe") return await jpegMeta(blob);
       if(e === "png") return await pngMeta(blob);
+      if(e === "heic" || e === "heif" || e === "avif") return await heifMeta(blob);
       if(VID.includes(e) && ["mp4", "m4v", "mov", "3gp", "3g2"].includes(e)) return await mp4Meta(blob);
     }catch(err){}
     return {};
@@ -479,8 +582,8 @@ const FC = (() => {
   }
 
   // ---------- Comparación ----------
-  const LV = {exacto: 5, identico: 4, fuerte: 3, probable: 2, dudoso: 1};
-  const LV_TXT = {exacto: "Exacto", identico: "Idéntico (otro nombre)", fuerte: "Fuerte", probable: "Probable", dudoso: "Dudoso"};
+  const LV = {exacto: 5, identico: 4, fuerte: 3, visual: 3, probable: 2, dudoso: 1};
+  const LV_TXT = {exacto: "Exacto", identico: "Idéntico (otro nombre)", fuerte: "Fuerte", visual: "Visual (misma imagen)", probable: "Probable", dudoso: "Dudoso"};
   function normName(n){
     let s = String(n || "").normalize("NFC").toLowerCase();
     s = s.replace(/\((\d+)\)(\.[^.]+)$/, "$2");
@@ -572,7 +675,139 @@ const FC = (() => {
     return {L, C, o};
   }
 
-  return {zipEntries, zipBlob, entBlob, entSliceable, readTakeout, localMeta, dateFromName, compare, normName, timeRel, kindOf, ext, baseName, dirName, LV, LV_TXT, jsonKey, mediaKey};
+
+  // ---------- Huella visual (dHash de 64 bits) ----------
+  // Usa la miniatura EXIF si existe (rápido); si no, decodifica la imagen reducida.
+  const VIS_EXT = ["jpg", "jpeg", "jpe", "png", "webp", "gif", "bmp", "avif"];
+  const canVis = n => VIS_EXT.includes(ext(n));
+  function mkCanvas(w, h){
+    if(typeof OffscreenCanvas !== "undefined") return new OffscreenCanvas(w, h);
+    const c = document.createElement("canvas"); c.width = w; c.height = h; return c;
+  }
+  function drawOriented(bmp, orient){
+    const o = {2: 1, 4: 3, 5: 6, 7: 8}[orient] || orient || 1, sw = o === 6 || o === 8;
+    const W = sw ? bmp.height : bmp.width, H = sw ? bmp.width : bmp.height;
+    const c = mkCanvas(W, H), x = c.getContext("2d", {willReadFrequently: true});
+    if(o === 6){ x.translate(W, 0); x.rotate(Math.PI / 2); }
+    else if(o === 8){ x.translate(0, H); x.rotate(-Math.PI / 2); }
+    else if(o === 3){ x.translate(W, H); x.rotate(Math.PI); }
+    x.drawImage(bmp, 0, 0);
+    return c;
+  }
+  function dhashFrom(c, bx){
+    const g = mkCanvas(36, 32), x = g.getContext("2d", {willReadFrequently: true});
+    x.imageSmoothingEnabled = true; x.imageSmoothingQuality = "high";
+    x.drawImage(c, bx.x, bx.y, bx.w, bx.h, 0, 0, 36, 32);
+    const d = x.getImageData(0, 0, 36, 32).data, px = new Float32Array(72);
+    for(let by = 0; by < 8; by++) for(let bxx = 0; bxx < 9; bxx++){
+      let s = 0;
+      for(let yy = 0; yy < 4; yy++) for(let xx = 0; xx < 4; xx++){ const i = ((by * 4 + yy) * 36 + bxx * 4 + xx) * 4; s += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; }
+      px[by * 9 + bxx] = s;
+    }
+    let mn = Infinity, mx = -Infinity; for(const v of px){ if(v < mn) mn = v; if(v > mx) mx = v; }
+    let hi = 0, lo = 0, k = 0;
+    for(let r = 0; r < 8; r++) for(let col = 0; col < 8; col++, k++){
+      const bit = px[r * 9 + col] > px[r * 9 + col + 1] + 48 ? 1 : 0; // margen: zonas lisas no cambian por ruido
+      if(k < 32) hi = (hi | (bit << (31 - k))) >>> 0; else lo = (lo | (bit << (63 - k))) >>> 0;
+    }
+    // Imágenes casi lisas (sin detalle) no sirven para comparar
+    return {hi, lo, ar: bx.w / bx.h, flat: mx - mn < 16 * 6};
+  }
+  async function vhash(blob, name, meta){
+    const e = ext(name);
+    let bmp = null, orient = 1, thumb = false;
+    if(e === "jpg" || e === "jpeg" || e === "jpe"){
+      if(!meta || meta.thumb === undefined) meta = Object.assign({}, meta, await jpegMeta(blob).catch(() => ({})));
+      if(meta.thumb && meta.thumb.n > 300){
+        try{ bmp = await createImageBitmap(new Blob([blob.slice(meta.thumb.o, meta.thumb.o + meta.thumb.n)], {type: "image/jpeg"}), {imageOrientation: "none"}); orient = meta.orient || 1; thumb = true; }
+        catch(err){ bmp = null; }
+      }
+    }
+    if(!bmp){
+      if(blob.size > 80 * 1048576) return null;
+      bmp = await createImageBitmap(blob, {imageOrientation: "from-image", resizeWidth: 128, resizeQuality: "medium"});
+      orient = 1;
+    }
+    const c = drawOriented(bmp, orient);
+    if(bmp.close) bmp.close();
+    let box = {x: 0, y: 0, w: c.width, h: c.height};
+    // La miniatura EXIF de una foto 16:9 suele venir con barras negras: se recorta a la proporción real de la foto
+    if(thumb && meta.w && meta.h){
+      const target = meta.w / meta.h, cur = c.width / c.height;
+      if(Math.abs(Math.log(cur / target)) > 0.03){
+        if(cur > target){ const w = c.height * target; box = {x: (c.width - w) / 2, y: 0, w, h: c.height}; }
+        else { const h = c.width / target; box = {x: 0, y: (c.height - h) / 2, w: c.width, h}; }
+      }
+    }
+    return dhashFrom(c, box);
+  }
+  const pc32 = x => { x -= (x >>> 1) & 0x55555555; x = (x & 0x33333333) + ((x >>> 2) & 0x33333333); return (((x + (x >>> 4)) & 0x0F0F0F0F) * 0x01010101) >>> 24; };
+  const hamming = (a, b) => pc32((a.hi ^ b.hi) >>> 0) + pc32((a.lo ^ b.lo) >>> 0);
+  const arOk = (a, b) => Math.abs(Math.log(a.ar / b.ar)) < 0.09;
+  // Pares visuales entre dos listas (o dentro de una, si B es null). Devuelve [[i, j, dist]]
+  function visPairs(A, B, thr){
+    const out = [], same = !B; B = B || A;
+    for(let i = 0; i < A.length; i++){
+      const a = A[i]; if(!a || a.flat) continue;
+      for(let j = same ? i + 1 : 0; j < B.length; j++){
+        const b = B[j]; if(!b || b.flat) continue;
+        if(!arOk(a, b)) continue;
+        const d = hamming(a, b); if(d <= thr) out.push([i, j, d]);
+      }
+    }
+    return out;
+  }
+
+  // ---------- Duplicados dentro de un mismo lado ----------
+  // items: lista; vpairs: pares visuales [[i, j, d]] con índices de items. Devuelve grupos.
+  function dupes(items, o, vpairs){
+    o = Object.assign({tol: 2, huso: false}, o || {});
+    items.forEach(x => { if(!x._n) x._n = normName(x.name); });
+    const par = items.map((_, i) => i), why = new Map();
+    const find = i => { while(par[i] !== i){ par[i] = par[par[i]]; i = par[i]; } return i; };
+    const join = (i, j, w) => { const a = find(i), b = find(j); if(a !== b) par[a] = b; const k = Math.min(i, j) + "|" + Math.max(i, j); why.set(k, w); };
+    const mismaCuenta = (a, b) => a.acc === b.acc && a.src !== b.src; // Takeout y fotos elegidas de la misma cuenta: no son duplicados
+    const bySize = new Map(), byName = new Map();
+    items.forEach((x, i) => {
+      if(x.size){ if(!bySize.has(x.size)) bySize.set(x.size, []); bySize.get(x.size).push(i); }
+      else { const k = x._n.full; if(!byName.has(k)) byName.set(k, []); byName.get(k).push(i); }
+    });
+    const tr = (a, b) => timeRel(a.date, b.date, o);
+    const reasons = {};
+    for(const g of bySize.values()){
+      if(g.length < 2 || g.length > 400) continue;
+      for(let x = 0; x < g.length; x++) for(let y = x + 1; y < g.length; y++){
+        const a = items[g[x]], b = items[g[y]];
+        if(a.kind !== b.kind || mismaCuenta(a, b)) continue;
+        const nm = a._n.full === b._n.full || a._n.base === b._n.base, t = tr(a, b);
+        if(nm || t === "igual") join(g[x], g[y], nm ? "mismo nombre y tamaño" : "mismo tamaño y misma fecha y hora");
+      }
+    }
+    for(const g of byName.values()){
+      if(g.length < 2 || g.length > 400) continue;
+      for(let x = 0; x < g.length; x++) for(let y = x + 1; y < g.length; y++){
+        const a = items[g[x]], b = items[g[y]];
+        if(a.kind !== b.kind || mismaCuenta(a, b)) continue;
+        const dims = !a.w || !b.w || (a.w === b.w && a.h === b.h);
+        if(tr(a, b) === "igual" && dims) join(g[x], g[y], "mismo nombre y misma fecha y hora");
+      }
+    }
+    for(const [i, j, d] of (vpairs || [])){ if(!mismaCuenta(items[i], items[j])) join(i, j, "misma imagen (diferencia " + d + " de 64)"); }
+    const groups = new Map();
+    items.forEach((x, i) => { const r = find(i); if(!groups.has(r)) groups.set(r, []); groups.get(r).push(i); });
+    const out = [];
+    for(const g of groups.values()){
+      if(g.length < 2) continue;
+      const ws = new Set();
+      for(let x = 0; x < g.length; x++) for(let y = x + 1; y < g.length; y++){ const w = why.get(Math.min(g[x], g[y]) + "|" + Math.max(g[x], g[y])); if(w) ws.add(w.replace(/\(diferencia \d+ de 64\)/, "")); }
+      const its = g.map(i => items[i]).sort((a, b) => (b.size || 0) - (a.size || 0));
+      const sizes = its.map(x => x.size || 0);
+      out.push({items: its, why: [...ws].map(w => w.trim()).join(" · "), visual: [...ws].some(w => w.startsWith("misma imagen")), libera: sizes.slice(1).reduce((a, b) => a + b, 0)});
+    }
+    return out.sort((a, b) => b.libera - a.libera || b.items.length - a.items.length);
+  }
+
+  return {zipEntries, zipBlob, entBlob, entSliceable, readTakeout, localMeta, dateFromName, compare, normName, timeRel, kindOf, ext, baseName, dirName, LV, LV_TXT, jsonKey, mediaKey, T_TXT, canVis, vhash, hamming, visPairs, dupes};
 })();
 if(typeof module !== "undefined") module.exports = FC;
 
@@ -586,12 +821,12 @@ if(typeof module !== "undefined") module.exports = FC;
   const CLIENT_ID_DEF = "414410842048-ac53pi41embhn1k8e004dnr99m20fqao.apps.googleusercontent.com"; // mismo proyecto que multigdrive
   const SCOPES = "https://www.googleapis.com/auth/photospicker.mediaitems.readonly https://www.googleapis.com/auth/userinfo.email";
   const PK = "https://photospicker.googleapis.com/v1/";
-  let cfg = {tema: "sistema", tol: 2, huso: true, prob: true, clientId: ""};
+  let cfg = {tema: "sistema", tol: 2, huso: true, prob: true, clientId: "", visThr: 8};
   try{ Object.assign(cfg, JSON.parse(localStorage.getItem(KEY) || "{}")); }catch(e){}
   const saveCfg = () => { try{ localStorage.setItem(KEY, JSON.stringify(cfg)); }catch(e){} };
   const clientId = () => (cfg.clientId || "").trim() || CLIENT_ID_DEF;
 
-  const S = {cloud: [], local: [], res: null, tab: "nube", shown: 100, nid: 1};
+  const S = {cloud: [], local: [], res: null, tab: "nube", shown: 100, nid: 1, vis: {pairs: [], dupL: [], dupC: []}};
 
   // ---------- utilidades ----------
   const fmtSize = b => !b ? "—" : b < 1024 ? b + " B" : b < 1048576 ? (b / 1024).toFixed(0) + " KB" : b < 1073741824 ? (b / 1048576).toFixed(1).replace(".", ",") + " MB" : (b / 1073741824).toFixed(2).replace(".", ",") + " GB";
@@ -798,7 +1033,7 @@ if(typeof module !== "undefined") module.exports = FC;
     await pool(files, 6, async (f, i) => {
       const m = await FC.localMeta(f, f.name);
       const date = m.date || FC.dateFromName(f.name) || (f.lastModified ? {t: f.lastModified, prec: "seg", kind: "archivo"} : null);
-      items[i] = {src: "local", acc, name: f.name, file: f.name, path: f.webkitRelativePath || f.name, size: f.size, kind: FC.kindOf(f.name), date, w: m.w || 0, h: m.h || 0, blob: f};
+      items[i] = {src: "local", acc, name: f.name, file: f.name, path: f.webkitRelativePath || f.name, size: f.size, kind: FC.kindOf(f.name), date, w: m.w || 0, h: m.h || 0, blob: f, meta: {thumb: m.thumb || null, orient: m.orient || 1, w: m.w || 0, h: m.h || 0}};
     }, (a, b) => { prog("#locProg", a, b); st("#locSt", `Leyendo ${num(a)} de ${num(b)} archivos…`); });
     prog("#locProg");
     S.local.push({id: S.nid++, kind: "local", acc, items, note: total > files.length ? `${num(total - files.length)} archivos que no son fotos ni videos ignorados` : ""});
@@ -817,11 +1052,42 @@ if(typeof module !== "undefined") module.exports = FC;
   $("#cmpBtn").onclick = () => runCompare();
   function runCompare(){
     const local = [].concat(...S.local.map(s => s.items)), cloud = [].concat(...S.cloud.map(s => s.items));
-    const t0 = performance.now();
-    S.res = FC.compare(local, cloud, {tol: cfg.tol, huso: cfg.huso, probableCuenta: cfg.prob});
-    S.res.local = local; S.res.cloud = cloud; S.res.ms = performance.now() - t0;
-    // Dudosos: pares dudosos del dispositivo + fotos de la nube cuyo mejor par es dudoso y no quedó tomado
-    const R = S.res;
+    const R = FC.compare(local, cloud, {tol: cfg.tol, huso: cfg.huso, probableCuenta: cfg.prob});
+    R.local = local; R.cloud = cloud;
+    applyVisual(R);
+    buildRows(R);
+    const idx = arr => { const m = new Map(arr.map((x, i) => [x, i])); return ps => ps.filter(p => m.has(p[0]) && m.has(p[1])).map(p => [m.get(p[0]), m.get(p[1]), p[2]]); };
+    R.dups = FC.dupes(local, {tol: cfg.tol}, idx(local)(S.vis.dupL)).map(g => Object.assign(g, {lado: "local"}))
+      .concat(FC.dupes(cloud, {tol: cfg.tol}, idx(cloud)(S.vis.dupC)).map(g => Object.assign(g, {lado: "nube"})));
+    R.rows.dup = R.dups;
+    S.res = R;
+    const srcs = [...new Set(S.cloud.map(s => "☁️ " + s.acc).concat(S.local.map(s => "💻 " + s.acc)))];
+    const prev = $("#fSrc").value;
+    $("#fSrc").innerHTML = '<option value="">Todas las fuentes</option>' + srcs.map(s => `<option>${esc(s)}</option>`).join("");
+    if(srcs.includes(prev)) $("#fSrc").value = prev;
+    S.shown = 100;
+    const nuevo = $("#resCard").classList.contains("hide");
+    $("#resCard").classList.remove("hide");
+    renderRes();
+    if(nuevo) $("#resCard").scrollIntoView({behavior: "smooth", block: "start"});
+  }
+  // Coincidencias visuales ya calculadas: mejoran lo que quedó sin pareja o dudoso
+  function applyVisual(R){
+    const li = new Map(R.local.map((x, i) => [x, i])), ci = new Map(R.cloud.map((x, i) => [x, i]));
+    const ps = S.vis.pairs.filter(p => li.has(p.l) && ci.has(p.c)).sort((a, b) => a.d - b.d);
+    for(const p of ps){
+      const a = li.get(p.l), b = ci.get(p.c);
+      const t = FC.timeRel(p.l.date, p.c.date, R.o);
+      const lejos = t === "distinto";
+      const m = {lv: lejos ? "dudoso" : "visual", n: lejos ? 1 : 3, why: `misma imagen (diferencia ${p.d} de 64) · ${FC.T_TXT[t]}`, dt: p.l.date && p.c.date ? Math.abs(p.l.date.t - p.c.date.t) : 9e15};
+      const cat = lejos ? "dudoso" : "ambos";
+      const rank = x => x.cat === "ambos" ? 2 : x.cat === "dudoso" ? 1 : 0;
+      if(rank(R.L[a]) < rank({cat})) R.L[a] = {it: p.l, m: Object.assign({ci: b}, m), cat};
+      if(rank(R.C[b]) < rank({cat})) R.C[b] = {it: p.c, m: Object.assign({li: a}, m), cat};
+    }
+  }
+  function buildRows(R){
+    const local = R.local, cloud = R.cloud;
     R.rows = {
       nube: R.C.filter(x => x.cat === "solo").map(x => ({c: x.it})),
       local: R.L.filter(x => x.cat === "solo").map(x => ({l: x.it})),
@@ -829,16 +1095,76 @@ if(typeof module !== "undefined") module.exports = FC;
       dudoso: R.L.filter(x => x.cat === "dudoso").map(x => ({l: x.it, c: cloud[x.m.ci], m: x.m}))
         .concat(R.C.map((x, ci) => ({x, ci})).filter(({x, ci}) => x.cat === "dudoso" && !(R.L[x.m.li].m && R.L[x.m.li].m.ci === ci)).map(({x}) => ({c: x.it, l: local[x.m.li], m: x.m, lado: "nube"})))
     };
-    // nube "en ambos" (para el conteo)
-    R.nubeAmbos = R.C.filter(x => x.cat === "ambos").length;
-    const srcs = [...new Set(S.cloud.map(s => "☁️ " + s.acc).concat(S.local.map(s => "💻 " + s.acc)))];
-    $("#fSrc").innerHTML = '<option value="">Todas las fuentes</option>' + srcs.map(s => `<option>${esc(s)}</option>`).join("");
-    S.shown = 100;
-    $("#resCard").classList.remove("hide");
-    renderRes();
-    $("#resCard").scrollIntoView({behavior: "smooth", block: "start"});
   }
-  const TABS = [["nube", "☁️ Solo en la nube"], ["local", "💻 Solo en el dispositivo"], ["ambos", "✅ En ambos"], ["dudoso", "❓ Dudosos"]];
+
+  // ---------- Comparación visual ----------
+  $("#visSens").value = String(cfg.visThr);
+  $("#visSens").onchange = () => { cfg.visThr = +$("#visSens").value; saveCfg(); if(S.vis.hashed){ calcVisPairs(); runCompare(); visResumen(); } };
+  let visStop = false;
+  $("#visStop").onclick = () => { visStop = true; };
+  const visable = it => it.kind === "foto" && (it.src === "picker" ? !!it.baseUrl : FC.canVis(it.file));
+  async function hashOne(it){
+    try{
+      if(it.src === "picker"){
+        if(Date.now() > it.tokExp){ it._vh = null; it._vhErr = "venció el acceso"; return; }
+        const r = await fetch(it.baseUrl + "=w256", {headers: {Authorization: "Bearer " + it.tok}});
+        if(!r.ok) throw new Error("HTTP " + r.status);
+        it._vh = await FC.vhash(await r.blob(), "x.png");
+      } else {
+        const b = it.blob || await FC.entBlob(it.ent);
+        it._vh = await FC.vhash(b, it.file, it.meta);
+      }
+    }catch(e){ it._vh = null; it._vhErr = e.message; }
+  }
+  $("#visBtn").onclick = async () => {
+    const R = S.res; if(!R) return;
+    const sinPar = x => x.cat !== "ambos";
+    const cand = R.L.filter(sinPar).map(x => x.it).concat(R.C.filter(sinPar).map(x => x.it));
+    const fotos = cand.filter(x => x.kind === "foto");
+    const todo = fotos.filter(x => x._vh === undefined && visable(x));
+    const noAn = fotos.filter(x => !visable(x)).length, videos = cand.length - fotos.length;
+    visStop = false;
+    $("#visBtn").disabled = true; $("#visStop").classList.remove("hide");
+    st("#visSt", `Analizando ${num(todo.length)} fotos…`); prog("#visProg", 0, todo.length || 1);
+    const t0 = performance.now();
+    let i = 0;
+    await Promise.all(Array.from({length: 4}, async () => {
+      while(i < todo.length && !visStop){
+        const it = todo[i++]; await hashOne(it);
+        if(i % 10 === 0 || i === todo.length){
+          prog("#visProg", i, todo.length);
+          const seg = (performance.now() - t0) / 1000, rest = i ? Math.round(seg / i * (todo.length - i)) : 0;
+          st("#visSt", `Analizando fotos: ${num(i)} de ${num(todo.length)}${rest > 5 ? ` · faltan unos ${rest > 90 ? Math.round(rest / 60) + " min" : rest + " s"}` : ""}…`);
+        }
+      }
+    }));
+    prog("#visProg"); $("#visBtn").disabled = false; $("#visStop").classList.add("hide");
+    S.vis.hashed = true;
+    calcVisPairs(); runCompare();
+    S.vis.info = {noAn, videos, err: fotos.filter(x => x._vh === null).length, picErr: fotos.some(x => x.src === "picker" && x._vh === null), parcial: visStop};
+    visResumen();
+  };
+  function calcVisPairs(){
+    const thr = cfg.visThr;
+    const Lh = [].concat(...S.local.map(s => s.items)).filter(x => x._vh), Ch = [].concat(...S.cloud.map(s => s.items)).filter(x => x._vh);
+    const best = new Map();
+    for(const [i, j, d] of FC.visPairs(Lh.map(x => x._vh), Ch.map(x => x._vh), thr)){ const b = best.get(i); if(!b || d < b.d) best.set(i, {l: Lh[i], c: Ch[j], d}); }
+    S.vis.pairs = [...best.values()];
+    S.vis.dupL = FC.visPairs(Lh.map(x => x._vh), null, Math.min(thr, 8)).map(([i, j, d]) => [Lh[i], Lh[j], d]);
+    S.vis.dupC = FC.visPairs(Ch.map(x => x._vh), null, Math.min(thr, 8)).map(([i, j, d]) => [Ch[i], Ch[j], d]);
+  }
+  function visResumen(){
+    const I = S.vis.info || {}, R = S.res;
+    const nv = R.rows.ambos.filter(r => r.m.lv === "visual").length, nd = R.dups.filter(g => g.visual).length;
+    const extra = [];
+    const pl = (n, s, p) => num(n) + " " + (n === 1 ? s : p);
+    if(I.noAn) extra.push(`${pl(I.noAn, "foto HEIC o RAW no se puede", "fotos HEIC o RAW no se pueden")} analizar en el navegador`);
+    if(I.videos) extra.push(`${pl(I.videos, "video queda", "videos quedan")} fuera por ahora`);
+    if(I.err) extra.push(`${pl(I.err, "foto no se pudo", "fotos no se pudieron")} leer${I.picErr ? " (las elegidas en Google Fotos necesitan el acceso vigente)" : ""}`);
+    st("#visSt", `${I.parcial ? "⏸ Detenido. " : "✅ "}${num(nv)} coincidencia${nv === 1 ? "" : "s"} visual${nv === 1 ? "" : "es"} nueva${nv === 1 ? "" : "s"} y ${num(nd)} grupo${nd === 1 ? "" : "s"} de duplicados visuales.` + (extra.length ? " " + extra.join(" · ") + "." : ""));
+  }
+
+  const TABS = [["nube", "☁️ Solo en la nube"], ["local", "💻 Solo en el dispositivo"], ["ambos", "✅ En ambos"], ["dudoso", "❓ Dudosos"], ["dup", "🧬 Duplicados"]];
   function renderRes(){
     const R = S.res; if(!R) return;
     const byLv = {}; R.rows.ambos.forEach(r => byLv[r.m.lv] = (byLv[r.m.lv] || 0) + 1);
@@ -847,19 +1173,23 @@ if(typeof module !== "undefined") module.exports = FC;
       ["nube", R.rows.nube.length, "Solo en la nube", `de ${num(R.cloud.length)} en la nube · no están en el dispositivo`],
       ["local", R.rows.local.length, "Solo en el dispositivo", `de ${num(R.local.length)} en el dispositivo · no están en la nube`],
       ["ambos", R.rows.ambos.length, "En ambos", lvTxt || "—"],
-      ["dudoso", R.rows.dudoso.length, "Dudosos", "revisalos vos"]
+      ["dudoso", R.rows.dudoso.length, "Dudosos", "revisalos vos"],
+      ["dup", R.dups.length, "Grupos de duplicados", R.dups.length ? `se liberarían ${fmtSize(R.dups.reduce((a, g) => a + g.libera, 0))}` : "sin duplicados"]
     ].map(([k, n, t, s]) => `<button class="tile${S.tab === k ? " on" : ""}" data-tab="${k}" type="button"><div class="n">${num(n)}</div><div><b>${t}</b></div><div class="xs mut">${s}</div></button>`).join("");
     $("#tabs").innerHTML = TABS.map(([k, t]) => `<button class="tab${S.tab === k ? " on" : ""}" data-tab="${k}" type="button">${t} (${num(R.rows[k].length)})</button>`).join("");
     $("#fLv").classList.toggle("hide", !(S.tab === "ambos"));
+    $("#fDup").classList.toggle("hide", S.tab !== "dup");
     renderList();
   }
   document.addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if(!b) return; S.tab = b.dataset.tab; S.shown = 100; renderRes(); });
-  ["#fQ", "#fKind", "#fSrc", "#fLv"].forEach(id => $(id).addEventListener("input", () => { S.shown = 100; renderList(); }));
+  ["#fQ", "#fKind", "#fSrc", "#fLv", "#fDup"].forEach(id => $(id).addEventListener("input", () => { S.shown = 100; renderList(); }));
   const srcLbl = it => (it.src === "local" ? "💻 " : "☁️ ") + it.acc;
   function filtered(){
     const q = $("#fQ").value.trim().toLowerCase(), k = $("#fKind").value, sr = $("#fSrc").value, lv = S.tab === "ambos" ? $("#fLv").value : "";
+    const ld = S.tab === "dup" ? $("#fDup").value : "";
     return S.res.rows[S.tab].filter(r => {
-      const its = [r.l, r.c].filter(Boolean);
+      if(ld && r.lado !== ld) return false;
+      const its = S.tab === "dup" ? r.items : [r.l, r.c].filter(Boolean);
       if(k && !its.some(i => i.kind === k)) return false;
       if(sr && !its.some(i => srcLbl(i) === sr)) return false;
       if(lv && (!r.m || r.m.lv !== lv)) return false;
@@ -884,13 +1214,17 @@ if(typeof module !== "undefined") module.exports = FC;
     const rows = filtered(), show = rows.slice(0, S.shown);
     const pair = S.tab === "ambos" || S.tab === "dudoso";
     $("#list").innerHTML = show.length ? show.map((r, i) => {
+      if(S.tab === "dup") return `<div class="grp"><div class="gh"><b>${r.lado === "nube" ? "☁️ Nube" : "💻 Dispositivo"} · ${r.items.length} copias</b>
+        <span class="badge ${r.visual ? "b-visual" : "b-exacto"}">${r.visual ? "Visual" : "Idénticos"}</span><span class="mut">${esc(r.why)}</span>
+        ${r.libera ? `<span class="mut">· se liberarían ${fmtSize(r.libera)}</span>` : ""}</div>
+        <div class="list">${r.items.map((it, k) => `<div class="it">${cell(it)}<div class="acts">${k === 0 && r.libera ? '<span class="badge">la más pesada</span>' : ""}</div></div>`).join("")}</div></div>`;
       if(!pair) return `<div class="it">${cell(r.l || r.c)}<div class="acts">${r.c && r.c.url ? `<a class="btn xs" href="${esc(r.c.url)}" target="_blank" rel="noopener">Ver en Google Fotos ↗</a>` : ""}</div></div>`;
       const canHash = r.l && r.l.blob && r.c && r.c.ent;
       return `<div class="it pair">${cell(r.l)}${cell(r.c)}<div class="acts"><span class="badge b-${r.m.lv}">${FC.LV_TXT[r.m.lv]}</span>
         <div class="why mut">${esc(r.m.why)}</div>
         ${canHash ? `<button class="btn xs" data-hash="${i}" type="button">🔎 Verificar huella</button>` : ""}
         ${r.c && r.c.url ? `<a class="btn xs" href="${esc(r.c.url)}" target="_blank" rel="noopener">Ver en Google Fotos ↗</a>` : ""}</div></div>`;
-    }).join("") : `<div class="empty">${S.res.rows[S.tab].length ? "Nada coincide con el filtro." : S.tab === "nube" ? "🎉 Todo lo de la nube está en el dispositivo." : S.tab === "local" ? "🎉 Todo lo del dispositivo está en la nube." : "No hay elementos."}</div>`;
+    }).join("") : `<div class="empty">${S.res.rows[S.tab].length ? "Nada coincide con el filtro." : S.tab === "nube" ? "🎉 Todo lo de la nube está en el dispositivo." : S.tab === "local" ? "🎉 Todo lo del dispositivo está en la nube." : S.tab === "dup" ? "No se encontraron duplicados." : "No hay elementos."}</div>`;
     $("#more").innerHTML = rows.length > S.shown ? `<button class="btn" id="moreBtn" type="button">Ver más (${num(rows.length - S.shown)} restantes)</button>` : (rows.length ? `<span class="xs mut">${num(rows.length)} elemento${rows.length > 1 ? "s" : ""}</span>` : "");
     const mb = $("#moreBtn"); if(mb) mb.onclick = () => { S.shown += 100; renderList(); };
     S.cur = rows;
@@ -957,8 +1291,20 @@ if(typeof module !== "undefined") module.exports = FC;
     a.download = `fotoscompare-${rowsByCat.length > 1 ? "completo" : rowsByCat[0][0]}-${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
   }
-  $("#csvTab").onclick = () => S.res && csv([[S.tab, filtered()]]);
-  $("#csvAll").onclick = () => S.res && csv(TABS.map(([k]) => [k, S.res.rows[k]]));
+  function csvDup(groups){
+    const q = v => { const s = String(v ?? ""); return /[;"\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const lines = [["Grupo", "Lado", "Tipo", "Motivo", "Se liberarían (bytes)", "Nombre", "Fecha", "Tamaño (bytes)", "Origen", "Ruta"].join(";")];
+    groups.forEach((g, i) => g.items.forEach(it => lines.push([i + 1, g.lado === "nube" ? "Nube" : "Dispositivo", g.visual ? "Visual" : "Idénticos", g.why, g.libera, it.name, fmtD(it.date), it.size || "", it.acc, it.path].map(q).join(";"))));
+    bajar(lines, "duplicados");
+  }
+  function bajar(lines, nombre){
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob(["\ufeff" + lines.join("\r\n")], {type: "text/csv;charset=utf-8"}));
+    a.download = `fotoscompare-${nombre}-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+  $("#csvTab").onclick = () => S.res && (S.tab === "dup" ? csvDup(filtered()) : csv([[S.tab, filtered()]]));
+  $("#csvAll").onclick = () => S.res && csv(TABS.filter(([k]) => k !== "dup").map(([k]) => [k, S.res.rows[k]]));
 
   // ---------- Menú, ayuda, configuración ----------
   $("#menuBtn").onclick = e => { e.stopPropagation(); $("#menu").classList.toggle("hide"); };
@@ -972,7 +1318,7 @@ if(typeof module !== "undefined") module.exports = FC;
     if(m === "google") confGoogle();
     if(m === "limpiar"){
       const d = dlg(`<h3>Empezar de nuevo</h3><p>Se quitan todas las fuentes y el resultado. Tus archivos no se tocan.</p><div class="acts"><button class="btn" data-x type="button">Cancelar</button><button class="btn pri" id="clrOk" type="button">Empezar de nuevo</button></div>`);
-      d.querySelector("#clrOk").onclick = () => { S.cloud = []; S.local = []; S.res = null; clearThumbs(); $("#resCard").classList.add("hide"); ["#tkSt", "#pkSt", "#locSt"].forEach(i => st(i, "")); renderSources(); d.close(); };
+      d.querySelector("#clrOk").onclick = () => { S.cloud = []; S.local = []; S.res = null; S.vis = {pairs: [], dupL: [], dupC: []}; st("#visSt", ""); clearThumbs(); $("#resCard").classList.add("hide"); ["#tkSt", "#pkSt", "#locSt"].forEach(i => st(i, "")); renderSources(); d.close(); };
     }
   });
   $("#helpBtn").onclick = () => ayuda();
@@ -998,14 +1344,22 @@ if(typeof module !== "undefined") module.exports = FC;
       <li><b>Pantalla de consentimiento / Acceso a los datos</b>: agregá el permiso <code>…/auth/photospicker.mediaitems.readonly</code>. Si la app está en modo prueba, tu cuenta tiene que figurar en <b>Usuarios de prueba</b>.</li></ol>
       <h4>3. Dispositivo</h4>
       <ul><li><b>PC</b>: "Elegir carpeta" (por ejemplo Imágenes o la copia del celular). El navegador pide confirmar que la página puede leerla.</li>
-      <li><b>Celular</b>: "Elegir archivos" abre la galería; seleccioná las fotos y videos a comparar.</li></ul>
+      <li><b>Celular</b>: "Elegir archivos" abre la galería; seleccioná las fotos y videos a comparar.</li>
+      <li>Se lee la fecha y el tamaño de JPEG, PNG, <b>HEIC/HEIF</b>, AVIF, MP4 y MOV.</li></ul>
       <h4>Niveles de coincidencia</h4>
       <ul><li><span class="badge b-exacto">Exacto</span> mismo nombre y mismo tamaño.</li>
       <li><span class="badge b-identico">Idéntico (otro nombre)</span> mismo tamaño y misma fecha y hora, con otro nombre.</li>
       <li><span class="badge b-fuerte">Fuerte</span> mismo nombre y misma fecha y hora (ej. recomprimida por "Ahorro de espacio").</li>
+      <li><span class="badge b-visual">Visual (misma imagen)</span> se ve igual aunque tenga otro nombre, otro tamaño o no tenga fecha (aparece después de usar 🧠).</li>
       <li><span class="badge b-probable">Probable</span> coinciden algunos datos, pero falta alguno para confirmar.</li>
       <li><span class="badge b-dudoso">Dudoso</span> mismo nombre con fecha distinta, o misma hora con otro nombre: revisalo vos.</li></ul>
       <p class="mut">"Verificar huella" compara el contenido byte a byte (solo contra Takeout). Las fotos elegidas en vivo no traen tamaño, así que no llegan a "Exacto".</p>
+      <h4>🧠 Comparación visual</h4>
+      <p>Analiza cómo se ve cada foto que quedó sin pareja o dudosa. Sirve cuando Google la recomprimió, cuando la renombraste o cuando no tiene fecha. Si la foto trae su miniatura interna, es rápido. La <b>sensibilidad</b> define cuánta diferencia se acepta: "Amplia" encuentra más, pero puede confundir fotos muy parecidas, como las ráfagas. Si dos imágenes se ven iguales pero tienen fechas muy distintas, quedan como Dudosas.</p>
+      <p class="mut">El navegador no puede ver fotos HEIC ni RAW, así que esas fotos no entran en la comparación visual (sí se comparan por nombre, fecha y tamaño). Los videos quedan para una próxima versión.</p>
+      <h4>🧬 Duplicados</h4>
+      <p>Agrupa copias repetidas <b>dentro</b> del dispositivo y <b>dentro</b> de la nube (por ejemplo, la misma foto en dos cuentas). Son idénticos si coincide el tamaño y además el nombre o la fecha y hora. Después de usar 🧠 también aparecen los duplicados visuales. "Se liberarían" es lo que ocupan las copias sin contar la más pesada.</p>
+      <p class="mut">La misma foto en la carpeta del año y en un álbum del Takeout no cuenta como duplicado: es una sola foto en Google Fotos.</p>
       <h4>Privacidad</h4>
       <p>Los archivos se leen en este navegador y no se suben a ningún lado. El acceso a Google dura una hora y no se guarda.</p></div>
       <div class="acts"><button class="btn pri" data-x type="button">Cerrar</button></div>`);
